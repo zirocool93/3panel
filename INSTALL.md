@@ -1,87 +1,147 @@
-# Установка
+# Установка на Ubuntu 24.04
 
-## Требования к серверу
+## Что делает установщик
 
-- Ubuntu Server с доступом в интернет;
-- пользователь с `sudo`;
-- DNS-домены для админки и subscription endpoint перед production-запуском;
-- доступ к публичному GitHub-репозиторию или к вашему fork.
+`scripts/install.sh` предназначен для первичного разворачивания VPNBotX на Ubuntu Server 24.04.
 
-Установщик сам проверяет `git`, Docker и Compose. Если Docker отсутствует, он использует
-официальный Docker install script. Для изолированных серверов установите Docker вручную заранее.
+Он проверяет и устанавливает необходимые компоненты:
 
-## Автоматическая установка
+- `sudo`, если запуск не от root;
+- `curl`;
+- `git`;
+- `openssl`;
+- `python3`;
+- Docker Engine;
+- Docker Compose plugin.
+
+Если Docker уже установлен, скрипт не переустанавливает его. Если Docker установлен без Compose
+plugin, установщик добавит официальный Docker APT repository и поставит недостающие пакеты.
+
+## Быстрая установка
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/zirocool93/3panel/main/scripts/install.sh -o install.sh
 bash install.sh
 ```
 
-Другой репозиторий можно передать аргументом:
+По умолчанию используется репозиторий:
+
+```text
+https://github.com/zirocool93/3panel.git
+```
+
+Другой fork можно передать аргументом:
 
 ```bash
 bash install.sh https://github.com/<owner>/<repo>.git
 ```
 
-По умолчанию проект размещается в `/opt/vpnbotx`. Путь можно изменить:
+Путь установки по умолчанию:
+
+```text
+/opt/vpnbotx
+```
+
+Изменить путь:
 
 ```bash
 VPNBOTX_INSTALL_DIR=/srv/vpnbotx bash install.sh
 ```
 
-Скрипт:
+## Данные, которые запрашиваются при установке
 
-1. устанавливает `git` и Docker, если они отсутствуют;
-2. клонирует Git checkout;
-3. создаёт `.env` из `.env.example`;
-4. генерирует пароль PostgreSQL и JWT secret;
-5. создаёт каталоги `var/` и `backups/`;
-6. собирает и запускает `docker-compose.prod.yml`;
-7. выводит команду создания owner-админа.
+Установщик интерактивно спросит:
 
-## Настройка `.env`
+- `TELEGRAM_BOT_TOKEN`;
+- email первого администратора;
+- пароль первого администратора;
+- режим доступа к web-панели;
+- публичный URL админки или локальный LAN URL;
+- subscription base URL;
+- разрешать ли обновление из админ-панели.
 
-Перед доступом пользователей заполните:
+Пароль администратора не сохраняется в `.env`. Он используется только для создания owner-аккаунта.
 
-```env
-TELEGRAM_BOT_TOKEN=
-FRONTEND_ORIGIN=https://admin.example.com
-SUBSCRIPTION_PUBLIC_BASE_URL=https://vpn.example.com
-CREDENTIALS_ENCRYPTION_KEY=
+## Режимы доступа к web-панели
+
+### 1. Домен или внешний reverse proxy
+
+Выбирайте этот режим, если web-панель будет открываться по домену, например:
+
+```text
+https://admin.example.com
 ```
 
-`CREDENTIALS_ENCRYPTION_KEY` нужен до сохранения логинов и паролей 3X-UI. Секреты не должны
-попадать в Git.
+Внешний reverse proxy должен направлять трафик на сервер с VPNBotX, порт `80`.
+Backend запускается с `--proxy-headers`, поэтому может работать за proxy, который передаёт
+`X-Forwarded-For` и `X-Forwarded-Proto`.
 
-## Создание администратора
+Пример внешнего Nginx upstream:
+
+```nginx
+location / {
+    proxy_pass http://127.0.0.1:80;
+    proxy_set_header Host $host;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+}
+```
+
+### 2. Без домена, только локальная сеть
+
+Выбирайте этот режим, если админка должна быть доступна только внутри LAN.
+Скрипт предложит URL вида:
+
+```text
+http://192.168.1.10
+```
+
+Этот URL будет записан в `FRONTEND_ORIGIN` и `SUBSCRIPTION_PUBLIC_BASE_URL`.
+
+## Что создаётся автоматически
+
+После ответов установщик:
+
+1. клонирует Git checkout в директорию установки;
+2. создаёт `.env`;
+3. генерирует:
+   - пароль PostgreSQL;
+   - JWT secret;
+   - `CREDENTIALS_ENCRYPTION_KEY`;
+   - `TELEGRAM_WEBHOOK_SECRET`;
+4. создаёт каталоги `var/` и `backups/`;
+5. собирает и запускает `docker-compose.prod.yml`;
+6. ждёт готовности `backend_api`;
+7. создаёт первого администратора с ролью `owner`.
+
+## Важные файлы
+
+```text
+/opt/vpnbotx/.env
+/opt/vpnbotx/docker-compose.prod.yml
+/opt/vpnbotx/var/admin-update.log
+/opt/vpnbotx/backups/
+```
+
+`.env` содержит секреты и не должен попадать в Git.
+
+## Обновление после установки
 
 ```bash
 cd /opt/vpnbotx
-docker compose -f docker-compose.prod.yml exec backend_api vpnbotx create-admin --role owner
+bash ./scripts/update.sh main
 ```
 
-## Ручная установка
-
-```bash
-git clone https://github.com/zirocool93/3panel.git /opt/vpnbotx
-cd /opt/vpnbotx
-cp .env.example .env
-docker compose -f docker-compose.prod.yml up -d --build
-docker compose -f docker-compose.prod.yml exec backend_api vpnbotx create-admin --role owner
-```
-
-Миграции применяются при старте `backend_api`.
+Если при установке включено обновление из админ-панели, owner сможет запустить этот же controlled
+update flow из раздела `Обновление`.
 
 ## Backup и restore
 
 ```bash
+cd /opt/vpnbotx
 bash ./scripts/backup_db.sh
 bash ./scripts/restore_db.sh backups/vpnbotx-YYYYMMDDTHHMMSSZ.sql.gz
 ```
 
-Храните backups и `.env` отдельно от Docker volumes.
+Храните backups отдельно от Docker volumes.
 
-## TLS и reverse proxy
-
-В репозитории есть базовый Nginx reverse proxy для Compose. Для production добавьте TLS на
-внешнем proxy или расширьте конфигурацию под вашу схему сертификатов и доменов.

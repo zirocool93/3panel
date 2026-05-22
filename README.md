@@ -55,18 +55,26 @@
 
 Если `TELEGRAM_BOT_TOKEN` пустой, контейнер бота стартует без polling.
 
-## Автоматическая установка на сервер
+## Автоматическая установка на Ubuntu 24.04
 
-Для Ubuntu Server предусмотрен установщик:
+Для Ubuntu Server 24.04 предусмотрен интерактивный установщик:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/zirocool93/3panel/main/scripts/install.sh -o install.sh
 bash install.sh
 ```
 
-По умолчанию он клонирует публичный репозиторий в `/opt/vpnbotx`, создаёт `.env`, генерирует
-часть секретов, собирает production Compose и запускает сервисы. После установки нужно заполнить
-домены, токен Telegram-бота, encryption key и создать owner-админа.
+Он проверяет наличие `git`, `curl`, `python3`, Docker Engine и Docker Compose plugin, при
+необходимости устанавливает недостающие компоненты, затем запрашивает:
+
+- `TELEGRAM_BOT_TOKEN`;
+- email и пароль первого администратора;
+- режим доступа к web-панели: домен/reverse proxy или локальная сеть;
+- URL админки и subscription endpoint;
+- включать ли обновление из админ-панели.
+
+После этого скрипт создаёт `.env`, генерирует секреты, запускает production Compose и создаёт
+owner-админа.
 
 Подробности - в [INSTALL.md](INSTALL.md).
 

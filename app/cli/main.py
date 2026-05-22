@@ -23,7 +23,13 @@ def migrate() -> None:
 @app.command("create-admin")
 def create_admin(
     email: str = typer.Option(..., prompt=True),
-    password: str = typer.Option(..., prompt=True, hide_input=True, confirmation_prompt=True),
+    password: str = typer.Option(
+        ...,
+        envvar="VPNBOTX_ADMIN_PASSWORD",
+        prompt=True,
+        hide_input=True,
+        confirmation_prompt=True,
+    ),
     role: AdminRole = typer.Option(AdminRole.OWNER),
 ) -> None:
     """Create the first web-admin account."""
@@ -55,6 +61,8 @@ def restore_db(path: Path) -> None:
 
 
 async def _create_admin(*, email: str, password: str, role: AdminRole) -> None:
+    if len(password) < 8:
+        raise typer.BadParameter("Admin password must contain at least 8 characters.")
     async with async_session_factory() as session:
         result = await session.execute(select(AdminUser).where(AdminUser.email == email))
         if result.scalar_one_or_none():
