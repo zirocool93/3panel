@@ -47,6 +47,19 @@ async def test_admin_login_and_profile() -> None:
             )
             assert profile_response.status_code == 200
             assert profile_response.json()["role"] == "owner"
+
+            update_status_response = await client.get(
+                "/api/system/updates",
+                headers={"Authorization": f"Bearer {access_token}"},
+            )
+            assert update_status_response.status_code == 200
+            assert update_status_response.json()["enabled"] is False
+
+            update_start_response = await client.post(
+                "/api/system/updates",
+                headers={"Authorization": f"Bearer {access_token}"},
+            )
+            assert update_start_response.status_code == 409
     finally:
         app.dependency_overrides.clear()
         await engine.dispose()

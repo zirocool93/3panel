@@ -7,7 +7,14 @@ if [[ $# -ne 1 ]]; then
 fi
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-cd "$ROOT_DIR"
-gunzip -c "$1" | docker compose -f docker-compose.prod.yml exec -T postgres \
-  psql -U "${POSTGRES_USER:-vpnbotx}" "${POSTGRES_DB:-vpnbotx}"
+docker_compose() {
+  if docker compose version >/dev/null 2>&1; then
+    docker compose "$@"
+  else
+    docker-compose "$@"
+  fi
+}
 
+cd "$ROOT_DIR"
+gunzip -c "$1" | docker_compose -f docker-compose.prod.yml exec -T postgres \
+  psql -U "${POSTGRES_USER:-vpnbotx}" "${POSTGRES_DB:-vpnbotx}"

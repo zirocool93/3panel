@@ -1,52 +1,87 @@
-# Installation
+# Установка
 
-## Ubuntu host prerequisites
+## Требования к серверу
 
-- Ubuntu Server with outbound network access;
-- Docker Engine and the Docker Compose plugin;
-- Git;
-- DNS and TLS termination plan for the admin and subscription domain.
+- Ubuntu Server с доступом в интернет;
+- пользователь с `sudo`;
+- DNS-домены для админки и subscription endpoint перед production-запуском;
+- доступ к публичному GitHub-репозиторию или к вашему fork.
 
-## Scripted install
+Установщик сам проверяет `git`, Docker и Compose. Если Docker отсутствует, он использует
+официальный Docker install script. Для изолированных серверов установите Docker вручную заранее.
 
-Clone or download the repository installer and run:
+## Автоматическая установка
 
 ```bash
-bash scripts/install.sh <github-repository-url>
+curl -fsSL https://raw.githubusercontent.com/zirocool93/3panel/main/scripts/install.sh -o install.sh
+bash install.sh
 ```
 
-The installer clones into `/opt/vpnbotx` by default, creates `.env` from `.env.example`, generates
-some random secrets, builds the Compose stack, runs migrations and shows service status.
-
-Before production traffic:
-
-1. Set `TELEGRAM_BOT_TOKEN`.
-2. Replace `CREDENTIALS_ENCRYPTION_KEY` with a real Fernet-compatible key before storing 3X-UI
-   credentials.
-3. Set `FRONTEND_ORIGIN` and `SUBSCRIPTION_PUBLIC_BASE_URL` to real domains.
-4. Configure TLS at the host proxy or replace the bundled Nginx config with the deployment policy.
-5. Create the owner:
-
-   ```bash
-   docker compose -f docker-compose.prod.yml exec backend_api vpnbotx create-admin --role owner
-   ```
-
-## Manual install
+Другой репозиторий можно передать аргументом:
 
 ```bash
-git clone <github-repository-url> /opt/vpnbotx
+bash install.sh https://github.com/<owner>/<repo>.git
+```
+
+По умолчанию проект размещается в `/opt/vpnbotx`. Путь можно изменить:
+
+```bash
+VPNBOTX_INSTALL_DIR=/srv/vpnbotx bash install.sh
+```
+
+Скрипт:
+
+1. устанавливает `git` и Docker, если они отсутствуют;
+2. клонирует Git checkout;
+3. создаёт `.env` из `.env.example`;
+4. генерирует пароль PostgreSQL и JWT secret;
+5. создаёт каталоги `var/` и `backups/`;
+6. собирает и запускает `docker-compose.prod.yml`;
+7. выводит команду создания owner-админа.
+
+## Настройка `.env`
+
+Перед доступом пользователей заполните:
+
+```env
+TELEGRAM_BOT_TOKEN=
+FRONTEND_ORIGIN=https://admin.example.com
+SUBSCRIPTION_PUBLIC_BASE_URL=https://vpn.example.com
+CREDENTIALS_ENCRYPTION_KEY=
+```
+
+`CREDENTIALS_ENCRYPTION_KEY` нужен до сохранения логинов и паролей 3X-UI. Секреты не должны
+попадать в Git.
+
+## Создание администратора
+
+```bash
+cd /opt/vpnbotx
+docker compose -f docker-compose.prod.yml exec backend_api vpnbotx create-admin --role owner
+```
+
+## Ручная установка
+
+```bash
+git clone https://github.com/zirocool93/3panel.git /opt/vpnbotx
 cd /opt/vpnbotx
 cp .env.example .env
 docker compose -f docker-compose.prod.yml up -d --build
-docker compose -f docker-compose.prod.yml exec backend_api vpnbotx migrate
+docker compose -f docker-compose.prod.yml exec backend_api vpnbotx create-admin --role owner
 ```
 
-## Backups
+Миграции применяются при старте `backend_api`.
+
+## Backup и restore
 
 ```bash
-./scripts/backup_db.sh
-./scripts/restore_db.sh backups/vpnbotx-YYYYMMDDTHHMMSSZ.sql.gz
+bash ./scripts/backup_db.sh
+bash ./scripts/restore_db.sh backups/vpnbotx-YYYYMMDDTHHMMSSZ.sql.gz
 ```
 
-Keep database backups outside the Compose volumes and protect `.env` separately.
+Храните backups и `.env` отдельно от Docker volumes.
 
+## TLS и reverse proxy
+
+В репозитории есть базовый Nginx reverse proxy для Compose. Для production добавьте TLS на
+внешнем proxy или расширьте конфигурацию под вашу схему сертификатов и доменов.

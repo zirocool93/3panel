@@ -1,29 +1,69 @@
-# Upgrade
+# Обновление
 
-## Supported flow
-
-Run updates from the deployment checkout:
+## Обновление на сервере
 
 ```bash
 cd /opt/vpnbotx
-./scripts/update.sh main
+bash ./scripts/update.sh main
 ```
 
-The update script:
+Скрипт:
 
-1. creates a PostgreSQL backup;
-2. fetches Git refs;
-3. fast-forwards the selected branch or checks out the selected ref;
-4. rebuilds containers;
-5. runs Alembic migrations;
-6. restarts the Compose services.
+1. вызывает `scripts/backup_db.sh`;
+2. делает `git fetch` и fast-forward выбранного ref;
+3. пересобирает контейнеры;
+4. применяет Alembic-миграции;
+5. запускает обновлённый Compose stack.
 
-For versioned deployments, pin a Git tag or release branch and test upgrades on a backup copy
-before live rollout.
+Для релизного deployment вместо `main` можно передать tag или release branch, если он совместим с
+текущими миграциями.
 
-## Rollback constraints
+## Обновление из web-админки
 
-Container rollback and schema rollback are separate concerns. Do not assume an older application
-version can read a newer schema. Keep the backup created before an update and review migration
-notes before restoring it.
+API:
 
+- `GET /api/system/updates` - статус self-update и последние строки лога;
+- `POST /api/system/updates` - запустить обновление.
+
+Оба endpoint доступны только admin-пользователю с ролью `owner`.
+
+Для включения добавьте в production `.env`:
+
+```env
+ADMIN_UPDATES_ENABLED=true
+ADMIN_UPDATE_REF=main
+ADMIN_UPDATE_COMMAND=/deployment/scripts/admin_update.sh
+ADMIN_UPDATE_LOG_PATH=/deployment/var/admin-update.log
+ADMIN_UPDATE_LOCK_PATH=/deployment/var/admin-update.lock
+```
+
+`ADMIN_UPDATE_REF` выбирается конфигурацией сервера. API не принимает произвольную команду или ref
+из frontend.
+
+## Права self-update
+
+Production Compose монтирует в `backend_api`:
+
+- checkout проекта как `/deployment`;
+- `/var/run/docker.sock`.
+
+Это позволяет скрипту из контейнера обновлять Git checkout, пересобирать контейнеры и применять
+миграции. Фактически доступ к Docker socket даёт повышенные права на deployment host.
+
+Оставьте `ADMIN_UPDATES_ENABLED=false`, если:
+
+- админка не должна управлять deployment;
+- обновления выполняет CI/CD;
+- Docker socket нельзя передавать API-контейнеру по вашей security policy.
+
+## Lock и логи
+
+`scripts/admin_update.sh` использует lock-файл `var/admin-update.lock`, чтобы не запускать два
+обновления одновременно. Лог пишется в `var/admin-update.log` и показывается на экране
+`Обновление`.
+
+## Откат
+
+Откат приложения и откат схемы БД - разные операции. Не запускайте старый код поверх новой схемы
+без проверки совместимости. Перед каждым update создаётся backup PostgreSQL; используйте его при
+восстановлении deployment.

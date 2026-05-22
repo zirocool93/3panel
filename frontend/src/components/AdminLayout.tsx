@@ -1,4 +1,4 @@
-import { DashboardOutlined, LogoutOutlined } from "@ant-design/icons";
+import { DashboardOutlined, LogoutOutlined, SyncOutlined } from "@ant-design/icons";
 import { Button, Layout, Menu, Tag, Typography } from "antd";
 import { Outlet, useNavigate } from "react-router-dom";
 
@@ -19,7 +19,20 @@ export function AdminLayout() {
         <Menu
           className="nav-menu"
           defaultSelectedKeys={["dashboard"]}
-          items={[{ key: "dashboard", icon: <DashboardOutlined />, label: "Dashboard" }]}
+          items={[
+            {
+              key: "dashboard",
+              icon: <DashboardOutlined />,
+              label: "Dashboard",
+              onClick: () => navigate("/"),
+            },
+            {
+              key: "updates",
+              icon: <SyncOutlined />,
+              label: "Обновление",
+              onClick: () => navigate("/system/updates"),
+            },
+          ]}
         />
       </Sider>
       <Layout>
@@ -42,4 +55,3 @@ export function AdminLayout() {
     </Layout>
   );
 }
-

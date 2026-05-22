@@ -17,4 +17,3 @@ async_session_factory = async_sessionmaker(engine, expire_on_commit=False, class
 async def get_session() -> AsyncIterator[AsyncSession]:
     async with async_session_factory() as session:
         yield session
-

@@ -1,21 +1,29 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-REPO_URL="${1:-}"
+REPO_URL="${1:-https://github.com/zirocool93/3panel.git}"
 INSTALL_DIR="${VPNBOTX_INSTALL_DIR:-/opt/vpnbotx}"
 
-if [[ -z "$REPO_URL" ]]; then
-  echo "Usage: scripts/install.sh <github-repository-url>"
-  exit 1
+if ! command -v git >/dev/null 2>&1; then
+  sudo apt-get update
+  sudo apt-get install -y git
 fi
 
 if ! command -v docker >/dev/null 2>&1; then
-  echo "Docker is required. Install Docker Engine and rerun this script."
-  exit 1
+  curl -fsSL https://get.docker.com | sudo sh
+  sudo systemctl enable --now docker
 fi
 
-if ! docker compose version >/dev/null 2>&1; then
-  echo "Docker Compose plugin is required."
+docker_compose() {
+  if docker compose version >/dev/null 2>&1; then
+    docker compose "$@"
+  else
+    docker-compose "$@"
+  fi
+}
+
+if ! docker compose version >/dev/null 2>&1 && ! command -v docker-compose >/dev/null 2>&1; then
+  echo "Docker Compose is required. The installed Docker package did not provide it."
   exit 1
 fi
 
@@ -27,6 +35,8 @@ if [[ ! -d "$INSTALL_DIR/.git" ]]; then
 fi
 
 cd "$INSTALL_DIR"
+mkdir -p var backups
+chmod +x scripts/*.sh
 
 if [[ ! -f .env ]]; then
   cp .env.example .env
@@ -55,7 +65,8 @@ PY
   echo "Created .env. Set TELEGRAM_BOT_TOKEN, domains and encryption key before production use."
 fi
 
-docker compose -f docker-compose.prod.yml up -d --build
-docker compose -f docker-compose.prod.yml exec backend_api vpnbotx migrate
-docker compose -f docker-compose.prod.yml ps
+docker_compose -f docker-compose.prod.yml up -d --build
+docker_compose -f docker-compose.prod.yml ps
 echo "VPNBotX installed in $INSTALL_DIR."
+echo "Create the owner with:"
+echo "  cd $INSTALL_DIR && docker compose -f docker-compose.prod.yml exec backend_api vpnbotx create-admin --role owner"

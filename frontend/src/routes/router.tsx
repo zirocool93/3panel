@@ -4,6 +4,7 @@ import { AdminLayout } from "../components/AdminLayout";
 import { authStore } from "../store/auth";
 import { DashboardPage } from "../pages/dashboard/DashboardPage";
 import { LoginPage } from "../pages/login/LoginPage";
+import { UpdatesPage } from "../pages/system/UpdatesPage";
 
 function ProtectedRoute() {
   return authStore.getAccessToken() ? <Outlet /> : <Navigate replace to="/login" />;
@@ -24,9 +25,12 @@ export const router = createBrowserRouter([
             path: "/",
             element: <DashboardPage />,
           },
+          {
+            path: "/system/updates",
+            element: <UpdatesPage />,
+          },
         ],
       },
     ],
   },
 ]);
-

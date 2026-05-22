@@ -1,23 +1,35 @@
-# Architecture
+# Архитектура
 
-## Modules
+## Слои
 
 ```text
 api / bot / cli / workers
         |
 application services
         |
-repositories and provider interfaces
+repositories и provider interfaces
         |
 PostgreSQL / Redis / 3X-UI / payment APIs
 ```
 
-The API, bot and worker entrypoints must stay thin. Commercial rules live in services, persistence
-in repositories and external panel or payment behavior behind provider interfaces.
+API, Telegram-бот и worker entrypoints должны оставаться тонкими. Бизнес-правила живут в сервисах,
+доступ к данным - в repositories, внешние панели и платежи - за provider interfaces.
 
-## Stage 1 tables
+## Модули текущего этапа
 
-The first migration creates:
+- `app/core` - конфигурация, security, logging, enum и permission policy;
+- `app/api` - FastAPI entrypoint и admin endpoints;
+- `app/bot` - aiogram entrypoint;
+- `app/db` - SQLAlchemy модели, session и Alembic migrations;
+- `app/services/panels` - контракт VPN panel provider;
+- `app/services/system` - безопасные operational actions из админки;
+- `app/workers` - Celery и scheduler;
+- `frontend` - React admin shell;
+- `scripts` - install, update, backup и restore flow.
+
+## Таблицы текущего этапа
+
+Первая миграция создаёт:
 
 - `users`;
 - `admin_users`;
@@ -32,20 +44,20 @@ The first migration creates:
 - `vpn_subscriptions`;
 - `vpn_subscription_nodes`.
 
-Later migrations add orders, payments, balance ledger, promocodes, promo links, referral rewards,
-broadcasts, notifications, audit logs and settings.
+Следующие миграции добавят orders, payments, balance ledger, promocodes, promo links, referrals,
+broadcasts, notifications, audit logs и settings.
 
-## Order lifecycle target
+## Целевой lifecycle заказа
 
 ```text
 draft -> pending_payment -> paid -> fulfilled
                      \-> expired | cancelled
 ```
 
-Payments remain separate from orders. Provider events are idempotent and order pricing is frozen
-when the order is created.
+Order фиксирует стоимость и назначение покупки. Payment хранит внешние платежные события и
+идемпотентность обработки.
 
-## Subscription lifecycle target
+## Целевой lifecycle подписки
 
 ```text
 pending -> active -> expired
@@ -53,12 +65,25 @@ pending -> active -> expired
 active  -> disabled
 ```
 
-`vpn_subscriptions` is the commercial parent. `vpn_subscription_nodes` tracks clients created on
-specific VPN panel servers, which allows one parent subscription to expose multiple server configs.
+`vpn_subscriptions` - коммерческая родительская подписка. `vpn_subscription_nodes` - клиенты на
+конкретных VPN-серверах. Это даёт мультисерверную subscription-ссылку без дублирования заказа.
 
-## Panel integration
+## Интеграция с панелями
 
-`PanelProvider` defines the panel contract. `XuiProvider` is the first implementation area. Marzban
-or Hiddify adapters should implement the same service boundary rather than leak panel-specific
-payloads into order and subscription logic.
+`PanelProvider` задаёт контракт:
+
+- создать и обновить клиента;
+- удалить или отключить клиента;
+- сбросить трафик;
+- получить статистику;
+- получить provider subscription URL.
+
+`XuiProvider` будет первой реализацией. Специфичные payload 3X-UI не должны проникать в pricing,
+orders и subscription lifecycle.
+
+## Обновление из админки
+
+Self-update - operational service, а не shell endpoint общего назначения. API принимает только
+запрос на запуск заранее настроенного `scripts/admin_update.sh`. Скрипт берёт Git ref из `.env`,
+делает backup, выполняет update flow и пишет лог в `var/`.
 

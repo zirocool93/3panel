@@ -36,6 +36,11 @@ class Settings(BaseSettings):
     telegram_bot_token: SecretStr = Field(default=SecretStr(""))
     telegram_webhook_secret: SecretStr = Field(default=SecretStr(""))
     subscription_public_base_url: str = "http://localhost"
+    admin_updates_enabled: bool = False
+    admin_update_ref: str = "main"
+    admin_update_command: str = "/deployment/scripts/admin_update.sh"
+    admin_update_log_path: str = "/deployment/var/admin-update.log"
+    admin_update_lock_path: str = "/deployment/var/admin-update.lock"
 
     @property
     def resolved_sync_database_url(self) -> str:
