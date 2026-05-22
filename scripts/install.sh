@@ -173,6 +173,32 @@ install_docker() {
   need_sudo systemctl enable --now docker
 }
 
+ensure_swap() {
+  local mem_total_kb swap_total_kb swap_path
+  mem_total_kb="$(awk '/MemTotal/ {print $2}' /proc/meminfo)"
+  swap_total_kb="$(awk '/SwapTotal/ {print $2}' /proc/meminfo)"
+  swap_path="${VPNBOTX_SWAP_PATH:-/swapfile}"
+
+  if (( mem_total_kb >= 3000000 || swap_total_kb >= 1000000 )); then
+    return 0
+  fi
+
+  warn "На сервере мало RAM и swap. Создаю swap 2G для Docker build."
+  if [[ ! -f "$swap_path" ]]; then
+    need_sudo fallocate -l 2G "$swap_path" || need_sudo dd if=/dev/zero of="$swap_path" bs=1M count=2048
+    need_sudo chmod 600 "$swap_path"
+    need_sudo mkswap "$swap_path"
+  fi
+
+  if ! swapon --show=NAME | grep -qx "$swap_path"; then
+    need_sudo swapon "$swap_path"
+  fi
+
+  if ! grep -q "^${swap_path} " /etc/fstab; then
+    echo "$swap_path none swap sw 0 0" | need_sudo tee -a /etc/fstab >/dev/null
+  fi
+}
+
 collect_initial_data() {
   info "Первичная настройка."
   TELEGRAM_BOT_TOKEN_VALUE="$(ask_required "TELEGRAM_BOT_TOKEN")"
@@ -277,6 +303,7 @@ main() {
   check_ubuntu
   install_system_packages
   install_docker
+  ensure_swap
   collect_initial_data
 
   need_sudo mkdir -p "$INSTALL_DIR"

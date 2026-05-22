@@ -17,6 +17,10 @@
 Если Docker уже установлен, скрипт не переустанавливает его. Если Docker установлен без Compose
 plugin, установщик добавит официальный Docker APT repository и поставит недостающие пакеты.
 
+На малых VPS установщик также проверяет RAM/swap. Если памяти мало и swap отсутствует, будет создан
+`/swapfile` размером `2G`. Это нужно, чтобы Docker build фронтенда не завершался ошибкой `exit code
+137` во время `npm install` или `npm run build`.
+
 ## Быстрая установка
 
 ```bash
@@ -144,4 +148,3 @@ bash ./scripts/restore_db.sh backups/vpnbotx-YYYYMMDDTHHMMSSZ.sql.gz
 ```
 
 Храните backups отдельно от Docker volumes.
-
