@@ -1,0 +1,90 @@
+:root {
+  color: #172033;
+  background: #f4f6f3;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+}
+
+#root {
+  min-height: 100vh;
+}
+
+.login-page {
+  align-items: center;
+  background:
+    linear-gradient(120deg, rgba(15, 118, 110, 0.18), transparent 38%),
+    #f4f6f3;
+  display: flex;
+  justify-content: center;
+  min-height: 100vh;
+  padding: 24px;
+}
+
+.login-panel {
+  background: #fff;
+  border: 1px solid #d5dfda;
+  border-radius: 8px;
+  box-shadow: 0 20px 60px rgba(23, 32, 51, 0.12);
+  max-width: 420px;
+  padding: 32px;
+  width: 100%;
+}
+
+.admin-shell {
+  min-height: 100vh;
+}
+
+.side-panel {
+  background: #172033 !important;
+}
+
+.brand-block {
+  border-bottom: 1px solid rgba(255, 255, 255, 0.14);
+  padding: 24px 20px 18px;
+}
+
+.brand-block h4 {
+  color: #fff;
+  margin-bottom: 12px;
+}
+
+.nav-menu {
+  background: transparent;
+  color: #fff;
+  padding: 12px;
+}
+
+.top-bar {
+  align-items: center;
+  background: #fff;
+  border-bottom: 1px solid #d5dfda;
+  display: flex;
+  height: 68px;
+  justify-content: space-between;
+  padding: 0 24px;
+}
+
+.workspace {
+  background: #f4f6f3;
+  padding: clamp(20px, 3vw, 36px);
+}
+
+.dashboard-page h2 {
+  margin-top: 0;
+}
+
+.metric-tile {
+  background: #fff;
+  border: 1px solid #d5dfda;
+  border-radius: 8px;
+  min-height: 132px;
+  padding: 24px;
+}

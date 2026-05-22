@@ -1,0 +1,1 @@
+"""VPNBotX application package."""
