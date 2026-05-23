@@ -173,6 +173,101 @@ install_docker() {
   need_sudo systemctl enable --now docker
 }
 
+is_lxc_container() {
+  if [[ -f /run/systemd/container ]] && grep -qi '^lxc$' /run/systemd/container; then
+    return 0
+  fi
+  if command -v systemd-detect-virt >/dev/null 2>&1 && systemd-detect-virt --container --quiet; then
+    [[ "$(systemd-detect-virt --container)" == "lxc" ]] && return 0
+  fi
+  if grep -qa 'container=lxc' /proc/1/environ 2>/dev/null; then
+    return 0
+  fi
+  if grep -qaE 'lxc|pve-container' /proc/1/cgroup 2>/dev/null; then
+    return 0
+  fi
+  return 1
+}
+
+print_lxc_requirements() {
+  cat >&2 <<'EOF'
+
+[VPNBotX] Минимальные требования для установки в Proxmox LXC:
+
+  Ресурсы контейнера:
+    - Ubuntu 24.04
+    - RAM: минимум 2 GB, рекомендовано 3-4 GB
+    - Swap: минимум 1 GB на уровне Proxmox host или memory+swap в настройках CT
+    - Disk: минимум 12 GB
+    - CPU: минимум 2 vCPU
+
+  Proxmox LXC options:
+    - Nesting: enabled
+    - Keyctl: enabled
+
+  Если Docker не стартует внутри LXC, включите на Proxmox host:
+    pct set <CTID> -features nesting=1,keyctl=1
+
+  Если установка падает на npm/Docker build с exit code 137:
+    - увеличьте RAM контейнера до 3-4 GB; или
+    - добавьте swap/memory swap в настройках LXC на Proxmox host.
+
+  Важно:
+    В LXC обычно нельзя выполнить swapon внутри контейнера.
+    Swap нужно добавлять на Proxmox host, а не командой внутри CT.
+
+EOF
+}
+
+check_minimum_requirements() {
+  local mem_total_kb disk_available_kb cpu_count swap_total_kb
+  mem_total_kb="$(awk '/MemTotal/ {print $2}' /proc/meminfo)"
+  swap_total_kb="$(awk '/SwapTotal/ {print $2}' /proc/meminfo)"
+  disk_available_kb="$(df -Pk "$INSTALL_DIR" 2>/dev/null | awk 'NR==2 {print $4}')"
+  if [[ -z "$disk_available_kb" ]]; then
+    disk_available_kb="$(df -Pk / | awk 'NR==2 {print $4}')"
+  fi
+  cpu_count="$(nproc)"
+
+  local failed=false
+  if (( mem_total_kb < 2000000 )); then
+    warn "Недостаточно RAM: нужно минимум 2 GB, лучше 3-4 GB."
+    failed=true
+  fi
+  if (( cpu_count < 2 )); then
+    warn "Недостаточно CPU: нужно минимум 2 vCPU."
+    failed=true
+  fi
+  if (( disk_available_kb < 12000000 )); then
+    warn "Недостаточно места на диске: нужно минимум 12 GB свободного места."
+    failed=true
+  fi
+  if is_lxc_container && (( mem_total_kb < 3000000 && swap_total_kb < 1000000 )); then
+    warn "Для LXC недостаточно памяти для сборки frontend: нужно 3-4 GB RAM или swap на Proxmox host."
+    failed=true
+  fi
+
+  if [[ "$failed" == "true" ]]; then
+    if is_lxc_container; then
+      print_lxc_requirements
+    fi
+    fail "Минимальные требования не соблюдены. Исправьте ресурсы контейнера и запустите установку снова."
+  fi
+}
+
+check_docker_runtime() {
+  if docker info >/dev/null 2>&1 || need_sudo docker info >/dev/null 2>&1; then
+    return 0
+  fi
+
+  if is_lxc_container; then
+    print_lxc_requirements
+    fail "Docker установлен, но daemon недоступен внутри LXC. Проверьте nesting/keyctl и права контейнера."
+  fi
+
+  fail "Docker установлен, но daemon недоступен. Проверьте systemctl status docker."
+}
+
 ensure_swap() {
   local mem_total_kb swap_total_kb swap_path
   mem_total_kb="$(awk '/MemTotal/ {print $2}' /proc/meminfo)"
@@ -183,6 +278,11 @@ ensure_swap() {
     return 0
   fi
 
+  if is_lxc_container; then
+    print_lxc_requirements
+    fail "В LXC нельзя безопасно создать swap из контейнера. Добавьте RAM/swap на Proxmox host."
+  fi
+
   warn "На сервере мало RAM и swap. Создаю swap 2G для Docker build."
   if [[ ! -f "$swap_path" ]]; then
     need_sudo fallocate -l 2G "$swap_path" || need_sudo dd if=/dev/zero of="$swap_path" bs=1M count=2048
@@ -191,7 +291,10 @@ ensure_swap() {
   fi
 
   if ! swapon --show=NAME | grep -qx "$swap_path"; then
-    need_sudo swapon "$swap_path"
+    if ! need_sudo swapon "$swap_path"; then
+      print_lxc_requirements
+      fail "Не удалось включить swap. Добавьте RAM/swap на host или разрешите swapon в окружении."
+    fi
   fi
 
   if ! grep -q "^${swap_path} " /etc/fstab; then
@@ -302,7 +405,9 @@ wait_for_backend() {
 main() {
   check_ubuntu
   install_system_packages
+  check_minimum_requirements
   install_docker
+  check_docker_runtime
   ensure_swap
   collect_initial_data
 
