@@ -36,6 +36,27 @@ def create_admin(
     asyncio.run(_create_admin(email=email.lower(), password=password, role=role))
 
 
+@app.command("list-admins")
+def list_admins() -> None:
+    """List web-admin accounts."""
+    asyncio.run(_list_admins())
+
+
+@app.command("set-admin-password")
+def set_admin_password(
+    email: str = typer.Option(..., prompt=True),
+    password: str = typer.Option(
+        ...,
+        envvar="VPNBOTX_ADMIN_PASSWORD",
+        prompt=True,
+        hide_input=True,
+        confirmation_prompt=True,
+    ),
+) -> None:
+    """Reset a web-admin password."""
+    asyncio.run(_set_admin_password(email=email.lower(), password=password))
+
+
 @app.command("seed-demo-data")
 def seed_demo_data() -> None:
     """Reserved entrypoint for local demo data in later stages."""
@@ -70,6 +91,33 @@ async def _create_admin(*, email: str, password: str, role: AdminRole) -> None:
         session.add(AdminUser(email=email, password_hash=hash_password(password), role=role))
         await session.commit()
     typer.echo(f"Created {role.value} admin {email}.")
+
+
+async def _list_admins() -> None:
+    async with async_session_factory() as session:
+        result = await session.execute(select(AdminUser).order_by(AdminUser.id))
+        admins = result.scalars().all()
+
+    if not admins:
+        typer.echo("No admin users found.")
+        return
+
+    for admin in admins:
+        status = "active" if admin.is_active else "inactive"
+        typer.echo(f"{admin.id}\t{admin.email}\t{admin.role.value}\t{status}")
+
+
+async def _set_admin_password(*, email: str, password: str) -> None:
+    if len(password) < 8:
+        raise typer.BadParameter("Admin password must contain at least 8 characters.")
+    async with async_session_factory() as session:
+        result = await session.execute(select(AdminUser).where(AdminUser.email == email))
+        admin = result.scalar_one_or_none()
+        if not admin:
+            raise typer.BadParameter("Admin with this email does not exist.")
+        admin.password_hash = hash_password(password)
+        await session.commit()
+    typer.echo(f"Password updated for {email}.")
 
 
 if __name__ == "__main__":

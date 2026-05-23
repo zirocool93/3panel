@@ -1,5 +1,6 @@
 import { LockOutlined, MailOutlined } from "@ant-design/icons";
 import { Alert, Button, Form, Input, Typography } from "antd";
+import axios from "axios";
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 
@@ -22,8 +23,20 @@ export function LoginPage() {
     try {
       authStore.setTokens(await login(values.email, values.password));
       navigate("/");
-    } catch {
-      setError("Access denied. Check the admin credentials.");
+    } catch (caughtError) {
+      if (axios.isAxiosError(caughtError)) {
+        const status = caughtError.response?.status;
+        const detail = caughtError.response?.data?.detail;
+        if (status === 401) {
+          setError("Неверный email или пароль.");
+        } else if (status) {
+          setError(`Ошибка API ${status}: ${detail ?? "проверьте логи backend_api."}`);
+        } else {
+          setError("API недоступен. Проверьте Nginx и backend_api.");
+        }
+      } else {
+        setError("Неизвестная ошибка входа.");
+      }
     } finally {
       setLoading(false);
     }
@@ -52,4 +65,3 @@ export function LoginPage() {
     </main>
   );
 }
-
