@@ -386,7 +386,7 @@ create_owner_admin() {
   if ! docker_compose -f docker-compose.prod.yml exec -T backend_api \
     env VPNBOTX_ADMIN_PASSWORD="$ADMIN_PASSWORD_VALUE" \
     vpnbotx create-admin --email "$ADMIN_EMAIL_VALUE" --role owner; then
-    warn "Администратор не создан. Возможно, такой email уже существует."
+    fail "Администратор не создан. Проверьте docker compose logs backend_api и повторите команду создания администратора."
   fi
 }
 

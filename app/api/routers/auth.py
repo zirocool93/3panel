@@ -73,7 +73,7 @@ async def refresh(
     refresh_record = result.scalar_one_or_none()
     if (
         not refresh_record
-        or refresh_record.expires_at <= datetime.now(UTC)
+        or _as_utc(refresh_record.expires_at) <= datetime.now(UTC)
         or not verify_token_hash(payload.refresh_token, refresh_record.token_hash)
     ):
         raise HTTPException(
@@ -145,3 +145,9 @@ def _refresh_record(
         expires_at=datetime.now(UTC) + timedelta(days=settings.refresh_token_ttl_days),
         created_at=datetime.now(UTC),
     )
+
+
+def _as_utc(value: datetime) -> datetime:
+    if value.tzinfo is None:
+        return value.replace(tzinfo=UTC)
+    return value.astimezone(UTC)

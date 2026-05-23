@@ -60,6 +60,12 @@ async def test_admin_login_and_profile() -> None:
                 headers={"Authorization": f"Bearer {access_token}"},
             )
             assert update_start_response.status_code == 409
+
+            refresh_response = await client.post(
+                "/api/auth/refresh",
+                json={"refresh_token": login_response.json()["refresh_token"]},
+            )
+            assert refresh_response.status_code == 200
     finally:
         app.dependency_overrides.clear()
         await engine.dispose()
