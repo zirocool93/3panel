@@ -424,6 +424,7 @@ main() {
   cd "$INSTALL_DIR"
   mkdir -p var backups
   chmod +x scripts/*.sh
+  git config core.fileMode false
   write_env_file
 
   info "Собираю и запускаю Docker Compose."

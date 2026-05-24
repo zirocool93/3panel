@@ -14,6 +14,7 @@ docker_compose() {
 
 cd "$INSTALL_DIR"
 bash ./scripts/backup_db.sh
+git config core.fileMode false
 git fetch --tags origin
 git checkout "$TARGET_REF"
 git pull --ff-only origin "$TARGET_REF"
