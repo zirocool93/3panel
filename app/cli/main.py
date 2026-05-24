@@ -11,7 +11,13 @@ from app.core.enums import AdminRole
 from app.core.security import hash_password
 from app.db.models.admin import AdminUser
 from app.db.session import async_session_factory
-from app.services.diagnostics import CheckResult, check_backend_health, check_database, check_redis
+from app.services.diagnostics import (
+    CheckResult,
+    check_backend_health,
+    check_database,
+    check_nginx_proxy,
+    check_redis,
+)
 
 app = typer.Typer(no_args_is_help=True)
 
@@ -153,6 +159,7 @@ async def _doctor() -> list[CheckResult]:
         await check_database(async_session_factory),
         await check_redis(settings),
         await check_backend_health(settings),
+        await check_nginx_proxy(),
     ]
 
 

@@ -67,3 +67,27 @@ async def check_backend_health(settings: Settings) -> CheckResult:
             "Если команда запущена внутри backend_api, проверьте API_PORT. "
             "На хосте используйте docker compose ps и docker compose logs backend_api.",
         )
+
+
+async def check_nginx_proxy() -> CheckResult:
+    url = "http://nginx/health"
+    try:
+        async with httpx.AsyncClient(timeout=5) as client:
+            response = await client.get(url)
+        if response.status_code == 200:
+            return CheckResult("Nginx proxy", True, "Nginx корректно проксирует /health.")
+        return CheckResult(
+            "Nginx proxy",
+            False,
+            f"Nginx /health вернул HTTP {response.status_code}.",
+            "Перезапустите Nginx: docker compose -f docker-compose.prod.yml restart nginx",
+        )
+    except Exception as exc:
+        return CheckResult(
+            "Nginx proxy",
+            False,
+            f"Nginx proxy недоступен из backend_api: {exc}",
+            "Проверьте контейнер nginx: "
+            "docker compose -f docker-compose.prod.yml logs --tail=100 nginx. "
+            "После обновления выполните docker compose -f docker-compose.prod.yml restart nginx.",
+        )

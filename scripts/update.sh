@@ -20,4 +20,5 @@ git pull --ff-only origin "$TARGET_REF"
 docker_compose -f docker-compose.prod.yml build
 docker_compose -f docker-compose.prod.yml run --rm backend_api vpnbotx migrate
 docker_compose -f docker-compose.prod.yml up -d
+docker_compose -f docker-compose.prod.yml restart nginx
 docker_compose -f docker-compose.prod.yml ps
