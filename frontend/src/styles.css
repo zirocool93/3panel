@@ -81,12 +81,61 @@ body {
   margin-top: 0;
 }
 
+.page-heading {
+  align-items: flex-start;
+  display: flex;
+  gap: 16px;
+  justify-content: space-between;
+  margin-bottom: 18px;
+}
+
+.page-heading h2 {
+  margin-top: 0;
+}
+
+.page-alert {
+  margin-bottom: 18px;
+}
+
 .metric-tile {
   background: #fff;
   border: 1px solid #d5dfda;
   border-radius: 8px;
   min-height: 132px;
   padding: 24px;
+}
+
+.settings-page {
+  max-width: 1280px;
+}
+
+.settings-section {
+  background: #fff;
+  border: 1px solid #d5dfda;
+  border-radius: 8px;
+  margin-bottom: 20px;
+  padding: 20px;
+}
+
+.settings-section h4 {
+  align-items: center;
+  display: flex;
+  gap: 8px;
+  margin-top: 0;
+}
+
+.xui-form {
+  column-gap: 16px;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.xui-form .ant-input-number {
+  width: 100%;
+}
+
+.form-actions {
+  align-self: end;
 }
 
 .updates-page {
@@ -117,4 +166,14 @@ body {
   overflow: auto;
   padding: 16px;
   white-space: pre-wrap;
+}
+
+@media (max-width: 960px) {
+  .page-heading {
+    display: block;
+  }
+
+  .xui-form {
+    grid-template-columns: 1fr;
+  }
 }

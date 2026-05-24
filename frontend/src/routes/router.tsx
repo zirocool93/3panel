@@ -4,6 +4,7 @@ import { AdminLayout } from "../components/AdminLayout";
 import { authStore } from "../store/auth";
 import { DashboardPage } from "../pages/dashboard/DashboardPage";
 import { LoginPage } from "../pages/login/LoginPage";
+import { XuiSettingsPage } from "../pages/settings/XuiSettingsPage";
 import { UpdatesPage } from "../pages/system/UpdatesPage";
 
 function ProtectedRoute() {
@@ -28,6 +29,10 @@ export const router = createBrowserRouter([
           {
             path: "/system/updates",
             element: <UpdatesPage />,
+          },
+          {
+            path: "/settings/xui",
+            element: <XuiSettingsPage />,
           },
         ],
       },

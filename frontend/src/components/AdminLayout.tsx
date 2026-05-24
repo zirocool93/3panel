@@ -1,6 +1,6 @@
-import { DashboardOutlined, LogoutOutlined, SyncOutlined } from "@ant-design/icons";
+import { CloudServerOutlined, DashboardOutlined, LogoutOutlined, SyncOutlined } from "@ant-design/icons";
 import { Button, Layout, Menu, Tag, Typography } from "antd";
-import { Outlet, useNavigate } from "react-router-dom";
+import { Outlet, useLocation, useNavigate } from "react-router-dom";
 
 import { ru } from "../i18n/ru";
 import { authStore } from "../store/auth";
@@ -9,6 +9,12 @@ const { Header, Sider, Content } = Layout;
 
 export function AdminLayout() {
   const navigate = useNavigate();
+  const location = useLocation();
+  const selectedKey = location.pathname.startsWith("/settings/xui")
+    ? "xui-settings"
+    : location.pathname.startsWith("/system/updates")
+      ? "updates"
+      : "dashboard";
 
   return (
     <Layout className="admin-shell">
@@ -19,13 +25,19 @@ export function AdminLayout() {
         </div>
         <Menu
           className="nav-menu"
-          defaultSelectedKeys={["dashboard"]}
+          selectedKeys={[selectedKey]}
           items={[
             {
               key: "dashboard",
               icon: <DashboardOutlined />,
               label: ru.navigation.dashboard,
               onClick: () => navigate("/"),
+            },
+            {
+              key: "xui-settings",
+              icon: <CloudServerOutlined />,
+              label: ru.navigation.xuiSettings,
+              onClick: () => navigate("/settings/xui"),
             },
             {
               key: "updates",
