@@ -6,10 +6,12 @@ from alembic import command
 from alembic.config import Config
 from sqlalchemy import select
 
+from app.core.config import get_settings
 from app.core.enums import AdminRole
 from app.core.security import hash_password
 from app.db.models.admin import AdminUser
 from app.db.session import async_session_factory
+from app.services.diagnostics import CheckResult, check_backend_health, check_database, check_redis
 
 app = typer.Typer(no_args_is_help=True)
 
@@ -55,6 +57,31 @@ def set_admin_password(
 ) -> None:
     """Reset a web-admin password."""
     asyncio.run(_set_admin_password(email=email.lower(), password=password))
+
+
+@app.command("check-db")
+def check_db() -> None:
+    """Check database connectivity."""
+    result = asyncio.run(check_database(async_session_factory))
+    _print_check(result)
+    raise typer.Exit(code=0 if result.ok else 1)
+
+
+@app.command("check-redis")
+def check_redis_command() -> None:
+    """Check Redis connectivity."""
+    result = asyncio.run(check_redis(get_settings()))
+    _print_check(result)
+    raise typer.Exit(code=0 if result.ok else 1)
+
+
+@app.command("doctor")
+def doctor() -> None:
+    """Run deployment diagnostics and print actionable fixes."""
+    results = asyncio.run(_doctor())
+    for result in results:
+        _print_check(result)
+    raise typer.Exit(code=0 if all(result.ok for result in results) else 1)
 
 
 @app.command("seed-demo-data")
@@ -118,6 +145,22 @@ async def _set_admin_password(*, email: str, password: str) -> None:
         admin.password_hash = hash_password(password)
         await session.commit()
     typer.echo(f"Password updated for {email}.")
+
+
+async def _doctor() -> list[CheckResult]:
+    settings = get_settings()
+    return [
+        await check_database(async_session_factory),
+        await check_redis(settings),
+        await check_backend_health(settings),
+    ]
+
+
+def _print_check(result: CheckResult) -> None:
+    marker = "OK" if result.ok else "FAIL"
+    typer.echo(f"[{marker}] {result.name}: {result.message}")
+    if result.fix:
+        typer.echo(f"      Что сделать: {result.fix}")
 
 
 if __name__ == "__main__":

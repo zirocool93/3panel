@@ -29,7 +29,7 @@ async def get_current_admin(
 ) -> AdminUser:
     if not credentials:
         raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED, detail="Missing bearer token."
+            status_code=status.HTTP_401_UNAUTHORIZED, detail="Требуется bearer-токен."
         )
     try:
         payload = decode_token(
@@ -44,6 +44,6 @@ async def get_current_admin(
     if not admin or not admin.is_active:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Admin is inactive.",
+            detail="Администратор отключён.",
         )
     return admin

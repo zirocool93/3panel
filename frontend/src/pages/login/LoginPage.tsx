@@ -5,6 +5,7 @@ import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 
 import { login } from "../../api/auth";
+import { ru } from "../../i18n/ru";
 import { authStore } from "../../store/auth";
 
 type LoginForm = {
@@ -28,14 +29,14 @@ export function LoginPage() {
         const status = caughtError.response?.status;
         const detail = caughtError.response?.data?.detail;
         if (status === 401) {
-          setError("Неверный email или пароль.");
+          setError(ru.auth.invalidCredentials);
         } else if (status) {
-          setError(`Ошибка API ${status}: ${detail ?? "проверьте логи backend_api."}`);
+          setError(`${ru.auth.apiError} ${status}: ${detail ?? ru.auth.apiFallback}`);
         } else {
-          setError("API недоступен. Проверьте Nginx и backend_api.");
+          setError(ru.auth.apiUnavailable);
         }
       } else {
-        setError("Неизвестная ошибка входа.");
+        setError(ru.auth.unknownError);
       }
     } finally {
       setLoading(false);
@@ -45,20 +46,18 @@ export function LoginPage() {
   return (
     <main className="login-page">
       <section className="login-panel">
-        <Typography.Title>VPNBotX Admin</Typography.Title>
-        <Typography.Paragraph>
-          Sign in with the owner or staff account created by the deployment CLI.
-        </Typography.Paragraph>
+        <Typography.Title>{ru.auth.title}</Typography.Title>
+        <Typography.Paragraph>{ru.auth.subtitle}</Typography.Paragraph>
         {error ? <Alert message={error} showIcon type="error" /> : null}
         <Form<LoginForm> layout="vertical" onFinish={submit} requiredMark={false}>
-          <Form.Item label="Email" name="email" rules={[{ required: true }, { type: "email" }]}>
+          <Form.Item label={ru.auth.email} name="email" rules={[{ required: true }, { type: "email" }]}>
             <Input prefix={<MailOutlined />} autoComplete="username" />
           </Form.Item>
-          <Form.Item label="Password" name="password" rules={[{ required: true }]}>
+          <Form.Item label={ru.auth.password} name="password" rules={[{ required: true }]}>
             <Input.Password prefix={<LockOutlined />} autoComplete="current-password" />
           </Form.Item>
           <Button block htmlType="submit" loading={loading} size="large" type="primary">
-            Sign in
+            {ru.auth.signIn}
           </Button>
         </Form>
       </section>

@@ -16,10 +16,13 @@
 - React, TypeScript, Vite и Ant Design каркас админ-панели;
 - Docker Compose для локального и production-shaped запуска;
 - скрипты автоматической установки, обновления, backup и restore PostgreSQL;
+- CLI-диагностика `vpnbotx doctor`, `vpnbotx check-db`, `vpnbotx check-redis`;
+- базовый REST API для управления 3X-UI серверами и проверки inbound;
+- HTTP-provider `XuiProvider` для 3X-UI с мокируемыми тестами;
 - запуск обновления из админ-панели для owner-роли при явном включении deployment-настроек.
 
-Интеграция с API `3X-UI`, платежи, баланс, выдача ключей, subscription endpoint, промо и
-рефералы добавляются на следующих этапах.
+Выдача ключей, платежи, баланс, subscription endpoint, промо и рефералы добавляются на следующих
+этапах.
 
 ## Быстрый локальный запуск
 
@@ -131,6 +134,14 @@ ruff check app tests
 mypy app
 pytest
 cd frontend && npm install && npm run build
+```
+
+Диагностика развёрнутого backend-контейнера:
+
+```bash
+docker compose -f docker-compose.prod.yml exec backend_api vpnbotx doctor
+docker compose -f docker-compose.prod.yml exec backend_api vpnbotx check-db
+docker compose -f docker-compose.prod.yml exec backend_api vpnbotx check-redis
 ```
 
 ## Документация

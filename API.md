@@ -11,6 +11,11 @@ FastAPI публикует OpenAPI на `/docs`.
 | `POST` | `/api/auth/refresh` | ротация refresh token |
 | `POST` | `/api/auth/logout` | отзыв refresh token |
 | `GET` | `/api/auth/me` | текущий admin-пользователь |
+| `GET` | `/api/servers` | список 3X-UI серверов |
+| `POST` | `/api/servers` | добавление 3X-UI сервера |
+| `PATCH` | `/api/servers/{server_id}` | редактирование 3X-UI сервера |
+| `POST` | `/api/servers/{server_id}/check` | проверка подключения к 3X-UI |
+| `GET` | `/api/servers/{server_id}/inbounds` | список inbound на 3X-UI сервере |
 | `GET` | `/api/system/updates` | статус self-update для owner |
 | `POST` | `/api/system/updates` | запуск self-update для owner |
 
@@ -18,7 +23,6 @@ FastAPI публикует OpenAPI на `/docs`.
 
 - `/api/dashboard`
 - `/api/users`
-- `/api/servers`
 - `/api/server-groups`
 - `/api/tariffs`
 - `/api/subscriptions`
@@ -43,4 +47,3 @@ FastAPI публикует OpenAPI на `/docs`.
 - `ADMIN_UPDATE_LOCK_PATH`.
 
 Endpoint возвращает `202 Accepted`, когда background update process запущен.
-

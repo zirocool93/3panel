@@ -1,0 +1,50 @@
+export const ru = {
+  common: {
+    appName: "VPNBotX",
+    stage: "Этап 1",
+    ready: "Готово",
+    running: "Выполняется",
+    refresh: "Обновить статус",
+    signOut: "Выйти",
+  },
+  auth: {
+    title: "VPNBotX Admin",
+    subtitle: "Войдите под учётной записью владельца или сотрудника, созданной при установке.",
+    email: "Email",
+    password: "Пароль",
+    signIn: "Войти",
+    invalidCredentials: "Неверный email или пароль.",
+    apiUnavailable: "API недоступен. Проверьте Nginx и backend_api.",
+    unknownError: "Неизвестная ошибка входа.",
+    apiError: "Ошибка API",
+    apiFallback: "проверьте логи backend_api.",
+  },
+  navigation: {
+    dashboard: "Панель",
+    updates: "Обновление",
+    administration: "Администрирование",
+  },
+  dashboard: {
+    title: "Панель",
+    api: "API",
+    apiValue: "Готов",
+    database: "База данных",
+    databaseValue: "Миграции применены",
+    bot: "Бот",
+    botValue: "Каркас запущен",
+  },
+  updates: {
+    title: "Обновление",
+    description:
+      "Админка запускает только настроенный deployment ref. Перед обновлением скрипт делает backup PostgreSQL, применяет миграции и перезапускает Docker Compose.",
+    statusLoadError: "Не удалось получить статус обновления.",
+    startRejected: "Запуск обновления отклонён. Проверьте права owner и настройки deployment.",
+    started: "Обновление запущено.",
+    disabledTitle: "Обновление из админки выключено",
+    disabledDescription:
+      "Включите ADMIN_UPDATES_ENABLED=true на сервере после настройки docker.sock и deployment mounts.",
+    start: "Запустить обновление",
+    lastLog: "Последний лог",
+    emptyLog: "Лог обновлений пока пуст.",
+  },
+};

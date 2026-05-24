@@ -38,7 +38,7 @@ async def login(
     ):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid credentials.",
+            detail="Неверный email или пароль.",
         )
 
     admin.last_login_at = datetime.now(UTC)
@@ -77,14 +77,14 @@ async def refresh(
         or not verify_token_hash(payload.refresh_token, refresh_record.token_hash)
     ):
         raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED, detail="Refresh token is revoked."
+            status_code=status.HTTP_401_UNAUTHORIZED, detail="Refresh-токен отозван."
         )
 
     admin = await session.get(AdminUser, int(token_payload["sub"]))
     if not admin or not admin.is_active:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Admin is inactive.",
+            detail="Администратор отключён.",
         )
 
     refresh_record.revoked_at = datetime.now(UTC)

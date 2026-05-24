@@ -2,6 +2,7 @@ import { DashboardOutlined, LogoutOutlined, SyncOutlined } from "@ant-design/ico
 import { Button, Layout, Menu, Tag, Typography } from "antd";
 import { Outlet, useNavigate } from "react-router-dom";
 
+import { ru } from "../i18n/ru";
 import { authStore } from "../store/auth";
 
 const { Header, Sider, Content } = Layout;
@@ -13,8 +14,8 @@ export function AdminLayout() {
     <Layout className="admin-shell">
       <Sider breakpoint="lg" collapsedWidth="0" className="side-panel" width={224}>
         <div className="brand-block">
-          <Typography.Title level={4}>VPNBotX</Typography.Title>
-          <Tag color="green">Stage 1</Tag>
+          <Typography.Title level={4}>{ru.common.appName}</Typography.Title>
+          <Tag color="green">{ru.common.stage}</Tag>
         </div>
         <Menu
           className="nav-menu"
@@ -23,13 +24,13 @@ export function AdminLayout() {
             {
               key: "dashboard",
               icon: <DashboardOutlined />,
-              label: "Dashboard",
+              label: ru.navigation.dashboard,
               onClick: () => navigate("/"),
             },
             {
               key: "updates",
               icon: <SyncOutlined />,
-              label: "Обновление",
+              label: ru.navigation.updates,
               onClick: () => navigate("/system/updates"),
             },
           ]}
@@ -37,7 +38,7 @@ export function AdminLayout() {
       </Sider>
       <Layout>
         <Header className="top-bar">
-          <Typography.Text strong>Administration</Typography.Text>
+          <Typography.Text strong>{ru.navigation.administration}</Typography.Text>
           <Button
             icon={<LogoutOutlined />}
             onClick={() => {
@@ -45,7 +46,7 @@ export function AdminLayout() {
               navigate("/login");
             }}
           >
-            Sign out
+            {ru.common.signOut}
           </Button>
         </Header>
         <Content className="workspace">

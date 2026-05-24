@@ -52,5 +52,5 @@ def _require_owner(admin: AdminUser) -> None:
     if admin.role != AdminRole.OWNER:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Only the owner can trigger deployment updates.",
+            detail="Запуск обновления доступен только владельцу.",
         )

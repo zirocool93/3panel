@@ -196,6 +196,26 @@ bash ./scripts/update.sh main
 Если при установке включено обновление из админ-панели, owner сможет запустить controlled update
 flow из раздела `Обновление`.
 
+## Диагностика после установки
+
+Проверить основные зависимости можно из backend-контейнера:
+
+```bash
+cd /opt/vpnbotx
+docker compose -f docker-compose.prod.yml exec backend_api vpnbotx doctor
+```
+
+Отдельные проверки:
+
+```bash
+docker compose -f docker-compose.prod.yml exec backend_api vpnbotx check-db
+docker compose -f docker-compose.prod.yml exec backend_api vpnbotx check-redis
+docker compose -f docker-compose.prod.yml ps
+```
+
+Если проверка падает, команда выводит конкретное действие: какой контейнер посмотреть и какую
+переменную окружения проверить.
+
 ## Backup и restore
 
 ```bash
@@ -205,4 +225,3 @@ bash ./scripts/restore_db.sh backups/vpnbotx-YYYYMMDDTHHMMSSZ.sql.gz
 ```
 
 Храните backups отдельно от Docker volumes.
-

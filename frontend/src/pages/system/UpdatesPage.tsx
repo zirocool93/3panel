@@ -2,6 +2,7 @@ import { Alert, Button, Space, Tag, Typography, message } from "antd";
 import { useEffect, useState } from "react";
 
 import { getUpdateStatus, startUpdate, type AdminUpdateStatus } from "../../api/system";
+import { ru } from "../../i18n/ru";
 
 export function UpdatesPage() {
   const [state, setState] = useState<AdminUpdateStatus | null>(null);
@@ -14,7 +15,7 @@ export function UpdatesPage() {
       setState(await getUpdateStatus());
       setError(null);
     } catch {
-      setError("Не удалось получить статус обновления.");
+      setError(ru.updates.statusLoadError);
     }
   }
 
@@ -22,9 +23,9 @@ export function UpdatesPage() {
     setLoading(true);
     try {
       setState(await startUpdate());
-      messageApi.success("Обновление запущено.");
+      messageApi.success(ru.updates.started);
     } catch {
-      setError("Запуск обновления отклонён. Проверьте права owner и настройки deployment.");
+      setError(ru.updates.startRejected);
     } finally {
       setLoading(false);
     }
@@ -39,35 +40,31 @@ export function UpdatesPage() {
   return (
     <section className="updates-page">
       {messageContext}
-      <Typography.Title level={2}>Обновление</Typography.Title>
-      <Typography.Paragraph>
-        Админка запускает только настроенный deployment ref. Перед обновлением скрипт делает backup
-        PostgreSQL, применяет миграции и перезапускает Compose.
-      </Typography.Paragraph>
+      <Typography.Title level={2}>{ru.updates.title}</Typography.Title>
+      <Typography.Paragraph>{ru.updates.description}</Typography.Paragraph>
       {error ? <Alert message={error} showIcon type="error" /> : null}
       {state && !state.enabled ? (
         <Alert
-          message="Обновление из админки выключено"
-          description="Включите ADMIN_UPDATES_ENABLED=true на сервере после настройки docker.sock и deployment mounts."
+          message={ru.updates.disabledTitle}
+          description={ru.updates.disabledDescription}
           showIcon
           type="warning"
         />
       ) : null}
       <Space className="update-actions" wrap>
         <Tag color={state?.running ? "processing" : "green"}>
-          {state?.running ? "Выполняется" : "Готово"}
+          {state?.running ? ru.common.running : ru.common.ready}
         </Tag>
         <Tag>Ref: {state?.ref ?? "..."}</Tag>
         <Button disabled={!state?.enabled || state?.running} loading={loading} onClick={runUpdate}>
-          Запустить обновление
+          {ru.updates.start}
         </Button>
-        <Button onClick={() => void refresh()}>Обновить статус</Button>
+        <Button onClick={() => void refresh()}>{ru.common.refresh}</Button>
       </Space>
       <div className="update-log">
-        <Typography.Title level={4}>Последний лог</Typography.Title>
-        <pre>{state?.log_tail.join("\n") || "Лог обновлений пока пуст."}</pre>
+        <Typography.Title level={4}>{ru.updates.lastLog}</Typography.Title>
+        <pre>{state?.log_tail.join("\n") || ru.updates.emptyLog}</pre>
       </div>
     </section>
   );
 }
-
