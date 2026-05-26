@@ -34,6 +34,8 @@ export type ServerCreate = {
   subscription_base_url?: string;
 };
 
+export type ServerUpdate = Partial<ServerCreate>;
+
 export type ServerHealthRead = {
   ok: boolean;
   status: ServerHealthStatus;
@@ -70,6 +72,14 @@ export async function listServers(): Promise<ServerRead[]> {
 
 export async function createServer(payload: ServerCreate): Promise<ServerRead> {
   const response = await api.post<ServerRead>("/servers", payload);
+  return response.data;
+}
+
+export async function updateServer(
+  serverId: number,
+  payload: ServerUpdate,
+): Promise<ServerRead> {
+  const response = await api.patch<ServerRead>(`/servers/${serverId}`, payload);
   return response.data;
 }
 

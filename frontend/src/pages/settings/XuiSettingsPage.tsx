@@ -2,6 +2,7 @@ import {
   ApiOutlined,
   CheckCircleOutlined,
   CloudServerOutlined,
+  EditOutlined,
   ReloadOutlined,
 } from "@ant-design/icons";
 import {
@@ -26,9 +27,11 @@ import {
   createServer,
   listServerInbounds,
   listServers,
+  updateServer,
   type ServerCreate,
   type ServerInboundRead,
   type ServerRead,
+  type ServerUpdate,
 } from "../../api/servers";
 import { ru } from "../../i18n/ru";
 
@@ -58,6 +61,7 @@ export function XuiSettingsPage() {
   const [servers, setServers] = useState<ServerRead[]>([]);
   const [inbounds, setInbounds] = useState<ServerInboundRead[]>([]);
   const [selectedServer, setSelectedServer] = useState<ServerRead | null>(null);
+  const [editingServer, setEditingServer] = useState<ServerRead | null>(null);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [checkingId, setCheckingId] = useState<number | null>(null);
@@ -80,30 +84,65 @@ export function XuiSettingsPage() {
   async function submit(values: ServerForm) {
     setSaving(true);
     try {
-      const payload: ServerCreate = {
+      const payload: ServerCreate | ServerUpdate = {
         name: values.name,
         country: values.country,
         location: values.location || undefined,
         panel_url: values.panel_url,
-        username: values.username || undefined,
-        password: values.password || undefined,
-        api_token: values.api_token || undefined,
         subscription_base_url: values.subscription_base_url || undefined,
         max_users: values.max_users,
         priority: values.priority ?? 100,
         enabled: values.enabled ?? true,
       };
-      await createServer(payload);
-      form.resetFields();
-      form.setFieldsValue({ enabled: true, priority: 100 });
-      messageApi.success(ru.xui.createSuccess);
+      if (!editingServer || values.username) {
+        payload.username = values.username || undefined;
+      }
+      if (!editingServer || values.password) {
+        payload.password = values.password || undefined;
+      }
+      if (!editingServer || values.api_token) {
+        payload.api_token = values.api_token || undefined;
+      }
+
+      if (editingServer) {
+        await updateServer(editingServer.id, payload);
+        messageApi.success(ru.xui.updateSuccess);
+      } else {
+        await createServer(payload as ServerCreate);
+        messageApi.success(ru.xui.createSuccess);
+      }
+      resetForm();
       await refreshServers();
     } catch (caughtError) {
       const detail = axios.isAxiosError(caughtError) ? caughtError.response?.data?.detail : null;
-      messageApi.error(detail || ru.xui.createError);
+      messageApi.error(detail || (editingServer ? ru.xui.updateError : ru.xui.createError));
     } finally {
       setSaving(false);
     }
+  }
+
+  function startEdit(server: ServerRead) {
+    setEditingServer(server);
+    form.setFieldsValue({
+      name: server.name,
+      country: server.country,
+      location: server.location || undefined,
+      panel_url: server.panel_url,
+      username: undefined,
+      password: undefined,
+      api_token: undefined,
+      subscription_base_url: server.subscription_base_url || undefined,
+      max_users: server.max_users || undefined,
+      priority: server.priority,
+      enabled: server.enabled,
+    });
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }
+
+  function resetForm() {
+    setEditingServer(null);
+    form.resetFields();
+    form.setFieldsValue({ enabled: true, priority: 100 });
   }
 
   async function runCheck(server: ServerRead) {
@@ -191,6 +230,9 @@ export function XuiSettingsPage() {
           >
             {ru.xui.actions.check}
           </Button>
+          <Button icon={<EditOutlined />} onClick={() => startEdit(server)}>
+            {ru.xui.actions.edit}
+          </Button>
           <Button icon={<ApiOutlined />} onClick={() => void openInbounds(server)}>
             {ru.xui.actions.inbounds}
           </Button>
@@ -230,8 +272,11 @@ export function XuiSettingsPage() {
 
       <section className="settings-section">
         <Typography.Title level={4}>
-          <CloudServerOutlined /> {ru.xui.addServer}
+          <CloudServerOutlined /> {editingServer ? ru.xui.editServer : ru.xui.addServer}
         </Typography.Title>
+        {editingServer ? (
+          <Alert className="page-alert" message={ru.xui.secretEditHint} showIcon type="info" />
+        ) : null}
         <Form<ServerForm>
           className="xui-form"
           form={form}
@@ -289,9 +334,12 @@ export function XuiSettingsPage() {
             <Switch />
           </Form.Item>
           <Form.Item className="form-actions">
-            <Button htmlType="submit" loading={saving} type="primary">
-              {ru.common.save}
-            </Button>
+            <Space wrap>
+              <Button htmlType="submit" loading={saving} type="primary">
+                {ru.common.save}
+              </Button>
+              {editingServer ? <Button onClick={resetForm}>{ru.common.cancel}</Button> : null}
+            </Space>
           </Form.Item>
         </Form>
       </section>

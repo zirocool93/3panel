@@ -50,12 +50,16 @@ export const ru = {
     loadError: "Не удалось загрузить список серверов.",
     createSuccess: "Сервер добавлен.",
     createError: "Не удалось добавить сервер.",
+    updateSuccess: "Сервер обновлён.",
+    updateError: "Не удалось обновить сервер.",
     checkSuccess: "Подключение успешно.",
     checkError: "Проверка подключения не прошла.",
     inboundsError: "Не удалось получить inbound.",
     emptyServers: "Серверы 3X-UI пока не добавлены.",
     serverList: "Серверы",
     inboundList: "Inbound сервера",
+    editServer: "Редактировать сервер",
+    secretEditHint: "Оставьте логин, пароль и API token пустыми, если не хотите их менять.",
     form: {
       name: "Название",
       country: "Страна",
@@ -87,6 +91,7 @@ export const ru = {
     },
     actions: {
       check: "Проверить",
+      edit: "Редактировать",
       inbounds: "Inbound",
     },
     status: {
