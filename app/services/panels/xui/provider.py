@@ -13,16 +13,13 @@ from app.services.panels.xui.schemas import XuiClientStats, XuiInbound
 @dataclass(frozen=True)
 class XuiCredentials:
     panel_url: str
-    username: str
-    password: str
+    username: str | None = None
+    password: str | None = None
+    api_token: str | None = None
 
 
 class XuiProvider:
-    """3X-UI HTTP adapter.
-
-    The adapter keeps the public PanelProvider contract narrow, while exposing
-    server-management helpers used by the admin API: healthcheck and inbound list.
-    """
+    """3X-UI HTTP adapter with v2 cookie auth and v3 Bearer token support."""
 
     def __init__(
         self,
@@ -39,6 +36,10 @@ class XuiProvider:
             follow_redirects=True,
         )
         self._authenticated = False
+        self._csrf_token: str | None = None
+        if credentials.api_token:
+            self._client.headers.update({"Authorization": f"Bearer {credentials.api_token}"})
+            self._authenticated = True
 
     async def __aenter__(self) -> "XuiProvider":
         return self
@@ -51,10 +52,16 @@ class XuiProvider:
             await self._client.aclose()
 
     async def login(self) -> None:
-        response = await self._client.post(
-            "/login",
-            data={"username": self._credentials.username, "password": self._credentials.password},
-        )
+        if self._credentials.api_token:
+            self._authenticated = True
+            return
+        if not self._credentials.username or not self._credentials.password:
+            raise XuiAuthenticationError("Для 3X-UI укажите API token или логин и пароль.")
+
+        response = await self._login_request()
+        if response.status_code == 403:
+            self._csrf_token = None
+            response = await self._login_request()
         if response.status_code not in {200, 204}:
             raise XuiAuthenticationError(f"3X-UI login failed with HTTP {response.status_code}.")
         payload = _json_or_empty(response)
@@ -63,7 +70,8 @@ class XuiProvider:
         self._authenticated = True
 
     async def healthcheck(self) -> bool:
-        await self.login()
+        if not self._authenticated:
+            await self.login()
         await self.get_inbounds()
         return True
 
@@ -143,13 +151,52 @@ class XuiProvider:
     async def _request(self, method: str, path: str, **kwargs: Any) -> dict[str, Any]:
         if not self._authenticated:
             await self.login()
-        response = await self._client.request(method, path, **kwargs)
+        headers = dict(kwargs.pop("headers", {}) or {})
+        headers.setdefault("X-Requested-With", "XMLHttpRequest")
+        if not _is_safe_method(method) and not self._credentials.api_token:
+            headers.update(self._unsafe_request_headers())
+        response = await self._client.request(method, path, headers=headers, **kwargs)
         if response.status_code >= 400:
             raise XuiRequestError(f"3X-UI request {path} failed with HTTP {response.status_code}.")
         payload = _json_or_empty(response)
         if payload.get("success") is False:
             raise XuiRequestError(str(payload.get("msg") or f"3X-UI request {path} failed."))
         return payload
+
+    async def _login_request(self) -> httpx.Response:
+        await self._ensure_csrf_token()
+        return await self._client.post(
+            "/login",
+            data={
+                "username": self._credentials.username,
+                "password": self._credentials.password,
+            },
+            headers=self._unsafe_request_headers(),
+        )
+
+    async def _ensure_csrf_token(self) -> None:
+        if self._csrf_token is not None:
+            return
+        response = await self._client.get(
+            "/csrf-token",
+            headers={"X-Requested-With": "XMLHttpRequest"},
+        )
+        if response.status_code == 404:
+            return
+        if response.status_code >= 400:
+            raise XuiAuthenticationError(
+                f"3X-UI CSRF token request failed with HTTP {response.status_code}."
+            )
+        payload = _json_or_empty(response)
+        token = payload.get("obj")
+        if isinstance(token, str) and token:
+            self._csrf_token = token
+
+    def _unsafe_request_headers(self) -> dict[str, str]:
+        headers = {"X-Requested-With": "XMLHttpRequest"}
+        if self._csrf_token:
+            headers["X-CSRF-Token"] = self._csrf_token
+        return headers
 
 
 @dataclass(frozen=True)
@@ -178,3 +225,7 @@ def _json_or_empty(response: httpx.Response) -> dict[str, Any]:
     except ValueError:
         return {}
     return payload if isinstance(payload, dict) else {}
+
+
+def _is_safe_method(method: str) -> bool:
+    return method.upper() in {"GET", "HEAD", "OPTIONS", "TRACE"}

@@ -151,8 +151,14 @@ async def _get_server(session: AsyncSession, server_id: int) -> Server:
 def _provider_for(server: Server, *, settings: Settings) -> XuiProvider:
     username = decrypt_secret(server.username_encrypted, settings=settings)
     password = decrypt_secret(server.password_encrypted, settings=settings)
-    if not username or not password:
-        raise CredentialEncryptionError("Для сервера не указаны логин или пароль 3X-UI.")
+    api_token = decrypt_secret(server.api_token_encrypted, settings=settings)
+    if not api_token and (not username or not password):
+        raise CredentialEncryptionError("Для сервера укажите API token или логин и пароль 3X-UI.")
     return XuiProvider(
-        XuiCredentials(panel_url=server.panel_url, username=username, password=password)
+        XuiCredentials(
+            panel_url=server.panel_url,
+            username=username,
+            password=password,
+            api_token=api_token,
+        )
     )

@@ -18,7 +18,8 @@
 - скрипты автоматической установки, обновления, backup и restore PostgreSQL;
 - CLI-диагностика `vpnbotx doctor`, `vpnbotx check-db`, `vpnbotx check-redis`;
 - базовый REST API для управления 3X-UI серверами и проверки inbound;
-- HTTP-provider `XuiProvider` для 3X-UI с мокируемыми тестами;
+- HTTP-provider `XuiProvider` для 3X-UI с поддержкой cookie-login, CSRF-login и Bearer API token
+  в 3X-UI 3.1.0+;
 - запуск обновления из админ-панели для owner-роли при явном включении deployment-настроек.
 
 Выдача ключей, платежи, баланс, subscription endpoint, промо и рефералы добавляются на следующих

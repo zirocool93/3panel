@@ -47,3 +47,12 @@ FastAPI публикует OpenAPI на `/docs`.
 - `ADMIN_UPDATE_LOCK_PATH`.
 
 Endpoint возвращает `202 Accepted`, когда background update process запущен.
+
+## 3X-UI 3.1.0+
+
+Начиная с 3X-UI 3.1.0 предпочтительный способ подключения внешней панели - `API token`.
+Укажите его в разделе `Настройки 3X-UI`. Если token задан, VPNBotX отправляет запросы к
+`/panel/api/*` с заголовком `Authorization: Bearer <token>` и не использует `/login`.
+
+Для старых панелей остаётся fallback через логин и пароль. Для новых панелей без API token
+поддержан CSRF-aware login через `/csrf-token`, но для production лучше использовать token.
