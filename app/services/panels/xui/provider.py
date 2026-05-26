@@ -7,7 +7,7 @@ import httpx
 
 from app.services.panels.base import PanelClientRef
 from app.services.panels.xui.exceptions import XuiAuthenticationError, XuiRequestError
-from app.services.panels.xui.schemas import XuiClientStats, XuiInbound
+from app.services.panels.xui.schemas import XuiClient, XuiClientStats, XuiInbound
 
 
 @dataclass(frozen=True)
@@ -81,6 +81,17 @@ class XuiProvider:
         if not isinstance(items, list):
             return []
         return [XuiInbound.model_validate(item) for item in items]
+
+    async def get_clients(self) -> list[XuiClient]:
+        payload = await self._request("GET", "/panel/api/inbounds/list")
+        items = payload.get("obj") if isinstance(payload, Mapping) else None
+        if not isinstance(items, list):
+            return []
+        clients: list[XuiClient] = []
+        for inbound in items:
+            if isinstance(inbound, Mapping):
+                clients.extend(_clients_from_inbound(inbound))
+        return clients
 
     async def create_client(
         self, *, inbound_id: str, payload: dict[str, object]
@@ -229,3 +240,98 @@ def _json_or_empty(response: httpx.Response) -> dict[str, Any]:
 
 def _is_safe_method(method: str) -> bool:
     return method.upper() in {"GET", "HEAD", "OPTIONS", "TRACE"}
+
+
+def _clients_from_inbound(inbound: Mapping[str, Any]) -> list[XuiClient]:
+    inbound_id = _int_or_zero(inbound.get("id"))
+    stats_by_email = {
+        str(stat.get("email")): stat
+        for stat in _list_or_empty(inbound.get("clientStats"))
+        if isinstance(stat, Mapping) and stat.get("email")
+    }
+    result: list[XuiClient] = []
+    for client in _settings_clients(inbound.get("settings")):
+        email = _string_or_none(client.get("email"))
+        if not email:
+            continue
+        stats = stats_by_email.get(email, {})
+        result.append(
+            XuiClient(
+                inbound_id=inbound_id,
+                inbound_remark=_string_or_none(inbound.get("remark")),
+                protocol=_string_or_none(inbound.get("protocol")),
+                email=email,
+                client_uuid=_string_or_none(
+                    client.get("id") or client.get("uuid") or client.get("password")
+                ),
+                sub_id=_string_or_none(client.get("subId") or client.get("sub_id")),
+                enable=_bool_or_none(client.get("enable", stats.get("enable"))),
+                expiry_time=_int_or_none(
+                    client.get("expiryTime") or client.get("expiry_time") or stats.get("expiryTime")
+                ),
+                traffic_limit=_int_or_zero(client.get("totalGB") or client.get("total")),
+                up=_int_or_zero(stats.get("up")),
+                down=_int_or_zero(stats.get("down")),
+                total=_int_or_zero(stats.get("total")),
+            )
+        )
+    for email, stats in stats_by_email.items():
+        if any(client.email == email for client in result):
+            continue
+        result.append(
+            XuiClient(
+                inbound_id=inbound_id,
+                inbound_remark=_string_or_none(inbound.get("remark")),
+                protocol=_string_or_none(inbound.get("protocol")),
+                email=email,
+                enable=_bool_or_none(stats.get("enable")),
+                up=_int_or_zero(stats.get("up")),
+                down=_int_or_zero(stats.get("down")),
+                total=_int_or_zero(stats.get("total")),
+            )
+        )
+    return result
+
+
+def _settings_clients(settings: Any) -> list[Mapping[str, Any]]:
+    if isinstance(settings, str):
+        try:
+            settings = json.loads(settings)
+        except ValueError:
+            return []
+    if not isinstance(settings, Mapping):
+        return []
+    return [
+        client
+        for client in _list_or_empty(settings.get("clients"))
+        if isinstance(client, Mapping)
+    ]
+
+
+def _list_or_empty(value: Any) -> list[Any]:
+    return value if isinstance(value, list) else []
+
+
+def _string_or_none(value: Any) -> str | None:
+    if value is None:
+        return None
+    return str(value)
+
+
+def _int_or_zero(value: Any) -> int:
+    return _int_or_none(value) or 0
+
+
+def _int_or_none(value: Any) -> int | None:
+    if value is None:
+        return None
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _bool_or_none(value: Any) -> bool | None:
+    if value is None:
+        return None
+    return bool(value)

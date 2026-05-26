@@ -1,4 +1,10 @@
-import { CloudServerOutlined, DashboardOutlined, LogoutOutlined, SyncOutlined } from "@ant-design/icons";
+import {
+  CloudServerOutlined,
+  DashboardOutlined,
+  LogoutOutlined,
+  SyncOutlined,
+  TeamOutlined,
+} from "@ant-design/icons";
 import { Button, Layout, Menu, Tag, Typography } from "antd";
 import { Outlet, useLocation, useNavigate } from "react-router-dom";
 
@@ -12,6 +18,8 @@ export function AdminLayout() {
   const location = useLocation();
   const selectedKey = location.pathname.startsWith("/settings/xui")
     ? "xui-settings"
+    : location.pathname.startsWith("/xui-clients")
+      ? "xui-clients"
     : location.pathname.startsWith("/system/updates")
       ? "updates"
       : "dashboard";
@@ -38,6 +46,12 @@ export function AdminLayout() {
               icon: <CloudServerOutlined />,
               label: ru.navigation.xuiSettings,
               onClick: () => navigate("/settings/xui"),
+            },
+            {
+              key: "xui-clients",
+              icon: <TeamOutlined />,
+              label: ru.navigation.xuiClients,
+              onClick: () => navigate("/xui-clients"),
             },
             {
               key: "updates",

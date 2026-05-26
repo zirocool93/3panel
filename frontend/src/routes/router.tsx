@@ -6,6 +6,7 @@ import { DashboardPage } from "../pages/dashboard/DashboardPage";
 import { LoginPage } from "../pages/login/LoginPage";
 import { XuiSettingsPage } from "../pages/settings/XuiSettingsPage";
 import { UpdatesPage } from "../pages/system/UpdatesPage";
+import { XuiClientsPage } from "../pages/xui-clients/XuiClientsPage";
 
 function ProtectedRoute() {
   return authStore.getAccessToken() ? <Outlet /> : <Navigate replace to="/login" />;
@@ -33,6 +34,10 @@ export const router = createBrowserRouter([
           {
             path: "/settings/xui",
             element: <XuiSettingsPage />,
+          },
+          {
+            path: "/xui-clients",
+            element: <XuiClientsPage />,
           },
         ],
       },

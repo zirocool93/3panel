@@ -110,3 +110,62 @@ async def test_xui_provider_create_client_returns_external_ref() -> None:
     assert ref.subscription_url == "https://xui.example/sub/user-1"
     assert bodies[0]["id"] == 7
     assert json.loads(str(bodies[0]["settings"]))["clients"][0]["email"] == "user-1"
+
+
+@pytest.mark.asyncio
+async def test_xui_provider_lists_existing_clients_from_inbounds() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/panel/api/inbounds/list":
+            return httpx.Response(
+                200,
+                json={
+                    "success": True,
+                    "obj": [
+                        {
+                            "id": 11,
+                            "remark": "VLESS-443",
+                            "protocol": "vless",
+                            "settings": {
+                                "clients": [
+                                    {
+                                        "id": "uuid-1",
+                                        "email": "alice",
+                                        "enable": True,
+                                        "subId": "sub-1",
+                                        "totalGB": 1073741824,
+                                    }
+                                ]
+                            },
+                            "clientStats": [
+                                {
+                                    "email": "alice",
+                                    "up": 100,
+                                    "down": 200,
+                                    "total": 300,
+                                    "enable": True,
+                                }
+                            ],
+                        }
+                    ],
+                },
+            )
+        return httpx.Response(404)
+
+    async with httpx.AsyncClient(
+        transport=httpx.MockTransport(handler),
+        base_url="https://xui.example",
+    ) as client:
+        provider = XuiProvider(
+            XuiCredentials(panel_url="https://xui.example", api_token="secret-token"),
+            client=client,
+        )
+        clients = await provider.get_clients()
+
+    assert len(clients) == 1
+    assert clients[0].email == "alice"
+    assert clients[0].client_uuid == "uuid-1"
+    assert clients[0].sub_id == "sub-1"
+    assert clients[0].inbound_id == 11
+    assert clients[0].up == 100
+    assert clients[0].down == 200
+    assert clients[0].traffic_limit == 1073741824

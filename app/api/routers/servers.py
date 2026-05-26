@@ -16,6 +16,7 @@ from app.schemas.servers import (
     ServerInboundRead,
     ServerRead,
     ServerUpdate,
+    XuiClientRead,
 )
 from app.services.panels.xui import XuiCredentials, XuiProvider
 from app.services.panels.xui.exceptions import XuiError
@@ -139,6 +140,22 @@ async def list_inbounds(
     except (CredentialEncryptionError, XuiError) as exc:
         raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(exc)) from exc
     return [ServerInboundRead.model_validate(inbound.model_dump()) for inbound in inbounds]
+
+
+@router.get("/{server_id}/xui-clients", response_model=list[XuiClientRead])
+async def list_xui_clients(
+    server_id: int,
+    _admin: AdminUser = Depends(get_current_admin),
+    session: AsyncSession = Depends(get_db),
+    settings: Settings = Depends(settings_dep),
+) -> list[XuiClientRead]:
+    server = await _get_server(session, server_id)
+    try:
+        async with _provider_for(server, settings=settings) as provider:
+            clients = await provider.get_clients()
+    except (CredentialEncryptionError, XuiError) as exc:
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(exc)) from exc
+    return [XuiClientRead.model_validate(client.model_dump()) for client in clients]
 
 
 async def _get_server(session: AsyncSession, server_id: int) -> Server:

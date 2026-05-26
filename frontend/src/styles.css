@@ -124,6 +124,14 @@ body {
   margin-top: 0;
 }
 
+.xui-client-toolbar {
+  margin-bottom: 16px;
+}
+
+.xui-client-stats {
+  margin-bottom: 20px;
+}
+
 .xui-form {
   column-gap: 16px;
   display: grid;

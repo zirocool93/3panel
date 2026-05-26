@@ -17,3 +17,18 @@ class XuiClientStats(BaseModel):
     down: int = 0
     total: int = 0
     enable: bool | None = None
+
+
+class XuiClient(BaseModel):
+    inbound_id: int
+    inbound_remark: str | None = None
+    protocol: str | None = None
+    email: str
+    client_uuid: str | None = None
+    sub_id: str | None = None
+    enable: bool | None = None
+    expiry_time: int | None = None
+    traffic_limit: int = 0
+    up: int = 0
+    down: int = 0
+    total: int = 0

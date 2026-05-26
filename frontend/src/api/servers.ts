@@ -48,6 +48,21 @@ export type ServerInboundRead = {
   port: number | null;
 };
 
+export type XuiClientRead = {
+  inbound_id: number;
+  inbound_remark: string | null;
+  protocol: string | null;
+  email: string;
+  client_uuid: string | null;
+  sub_id: string | null;
+  enable: boolean | null;
+  expiry_time: number | null;
+  traffic_limit: number;
+  up: number;
+  down: number;
+  total: number;
+};
+
 export async function listServers(): Promise<ServerRead[]> {
   const response = await api.get<ServerRead[]>("/servers");
   return response.data;
@@ -65,5 +80,10 @@ export async function checkServer(serverId: number): Promise<ServerHealthRead> {
 
 export async function listServerInbounds(serverId: number): Promise<ServerInboundRead[]> {
   const response = await api.get<ServerInboundRead[]>(`/servers/${serverId}/inbounds`);
+  return response.data;
+}
+
+export async function listXuiClients(serverId: number): Promise<XuiClientRead[]> {
+  const response = await api.get<XuiClientRead[]>(`/servers/${serverId}/xui-clients`);
   return response.data;
 }
