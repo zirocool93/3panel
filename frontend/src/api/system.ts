@@ -32,6 +32,11 @@ export type TelegramSettingsUpdate = {
   new_password?: string;
 };
 
+export type TelegramTestMessageResult = {
+  ok: boolean;
+  message: string;
+};
+
 export async function getUpdateStatus(): Promise<AdminUpdateStatus> {
   const response = await api.get<AdminUpdateStatus>("/system/updates");
   return response.data;
@@ -51,5 +56,12 @@ export async function updateTelegramSettings(
   payload: TelegramSettingsUpdate,
 ): Promise<TelegramSettingsRead> {
   const response = await api.put<TelegramSettingsRead>("/system/telegram-settings", payload);
+  return response.data;
+}
+
+export async function sendTelegramTestMessage(): Promise<TelegramTestMessageResult> {
+  const response = await api.post<TelegramTestMessageResult>(
+    "/system/telegram-settings/test-message",
+  );
   return response.data;
 }

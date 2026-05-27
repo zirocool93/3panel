@@ -8,13 +8,23 @@ from app.core.crypto import encrypt_secret
 from app.core.enums import AdminRole
 from app.core.security import hash_password, verify_password
 from app.db.models.admin import AdminUser
-from app.schemas.system import AdminUpdateStatus, TelegramSettingsRead, TelegramSettingsUpdate
-from app.services.app_settings import get_or_create_app_settings
+from app.schemas.system import (
+    AdminUpdateStatus,
+    TelegramSettingsRead,
+    TelegramSettingsUpdate,
+    TelegramTestMessageResult,
+)
+from app.services.app_settings import get_or_create_app_settings, get_telegram_runtime_settings
 from app.services.system.updates import (
     AdminUpdateBusy,
     AdminUpdateDisabled,
     AdminUpdateError,
     admin_update_manager,
+)
+from app.services.telegram import (
+    TelegramTestMessageConfigurationError,
+    TelegramTestMessageDeliveryError,
+    send_telegram_test_message,
 )
 
 router = APIRouter(prefix="/system", tags=["system"])
@@ -57,19 +67,49 @@ async def start_update(
 async def get_telegram_settings(
     admin: AdminUser = Depends(get_current_admin),
     session: AsyncSession = Depends(get_db),
+    settings: Settings = Depends(settings_dep),
 ) -> TelegramSettingsRead:
     _require_owner(admin)
     app_settings = await get_or_create_app_settings(session)
     await session.commit()
     return TelegramSettingsRead(
         bot_username=app_settings.telegram_bot_username,
-        bot_token_set=bool(app_settings.telegram_bot_token_encrypted),
+        bot_token_set=bool(
+            app_settings.telegram_bot_token_encrypted
+            or settings.telegram_bot_token.get_secret_value()
+        ),
         admin_telegram_id=app_settings.telegram_admin_id,
         socks5_enabled=app_settings.socks5_enabled,
         socks5_host=app_settings.socks5_host,
         socks5_port=app_settings.socks5_port,
         socks5_username_set=bool(app_settings.socks5_username_encrypted),
         admin_email=admin.email,
+    )
+
+
+@router.post("/telegram-settings/test-message", response_model=TelegramTestMessageResult)
+async def send_telegram_settings_test_message(
+    admin: AdminUser = Depends(get_current_admin),
+    session: AsyncSession = Depends(get_db),
+    settings: Settings = Depends(settings_dep),
+) -> TelegramTestMessageResult:
+    _require_owner(admin)
+    runtime_settings = await get_telegram_runtime_settings(session, settings)
+    try:
+        await send_telegram_test_message(runtime_settings)
+    except TelegramTestMessageConfigurationError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=str(exc),
+        ) from exc
+    except TelegramTestMessageDeliveryError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=str(exc),
+        ) from exc
+    return TelegramTestMessageResult(
+        ok=True,
+        message="Тестовое сообщение отправлено администратору.",
     )
 
 
@@ -140,7 +180,10 @@ async def update_telegram_settings(
     await session.commit()
     return TelegramSettingsRead(
         bot_username=app_settings.telegram_bot_username,
-        bot_token_set=bool(app_settings.telegram_bot_token_encrypted),
+        bot_token_set=bool(
+            app_settings.telegram_bot_token_encrypted
+            or settings.telegram_bot_token.get_secret_value()
+        ),
         admin_telegram_id=app_settings.telegram_admin_id,
         socks5_enabled=app_settings.socks5_enabled,
         socks5_host=app_settings.socks5_host,

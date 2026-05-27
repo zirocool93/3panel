@@ -10,7 +10,7 @@ from app.db.base import Base
 from app.db.models.admin import AdminUser
 
 
-async def test_admin_login_and_profile() -> None:
+async def test_admin_login_and_profile(monkeypatch) -> None:
     engine = create_async_engine("sqlite+aiosqlite:///:memory:")
     session_factory = async_sessionmaker(engine, expire_on_commit=False)
 
@@ -34,6 +34,16 @@ async def test_admin_login_and_profile() -> None:
     app.dependency_overrides[get_db] = override_get_db
     app.dependency_overrides[settings_dep] = lambda: Settings(
         credentials_encryption_key="1eU1yI-x0dUaLYprksH70z9RiPz8AwYI2sf2QSwRJH4="
+    )
+    sent_test_messages = 0
+
+    async def fake_send_telegram_test_message(_runtime_settings) -> None:
+        nonlocal sent_test_messages
+        sent_test_messages += 1
+
+    monkeypatch.setattr(
+        "app.api.routers.system.send_telegram_test_message",
+        fake_send_telegram_test_message,
     )
     try:
         transport = ASGITransport(app=app)
@@ -93,6 +103,14 @@ async def test_admin_login_and_profile() -> None:
             assert saved_settings["bot_token_set"] is True
             assert saved_settings["socks5_enabled"] is True
             assert saved_settings["socks5_username_set"] is True
+
+            test_message_response = await client.post(
+                "/api/system/telegram-settings/test-message",
+                headers={"Authorization": f"Bearer {access_token}"},
+            )
+            assert test_message_response.status_code == 200
+            assert test_message_response.json()["ok"] is True
+            assert sent_test_messages == 1
 
             refresh_response = await client.post(
                 "/api/auth/refresh",

@@ -1,10 +1,17 @@
-import { LockOutlined, ReloadOutlined, RobotOutlined, UserOutlined } from "@ant-design/icons";
+import {
+  LockOutlined,
+  ReloadOutlined,
+  RobotOutlined,
+  SendOutlined,
+  UserOutlined,
+} from "@ant-design/icons";
 import { Alert, Button, Form, Input, InputNumber, Space, Switch, Typography, message } from "antd";
 import axios from "axios";
 import { useEffect, useState } from "react";
 
 import {
   getTelegramSettings,
+  sendTelegramTestMessage,
   updateTelegramSettings,
   type TelegramSettingsRead,
   type TelegramSettingsUpdate,
@@ -30,6 +37,7 @@ export function TelegramSettingsPage() {
   const [settings, setSettings] = useState<TelegramSettingsRead | null>(null);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [testing, setTesting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [messageApi, messageContext] = message.useMessage();
   const socks5Enabled = Form.useWatch("socks5_enabled", form);
@@ -101,6 +109,19 @@ export function TelegramSettingsPage() {
     }
   }
 
+  async function sendTestMessage() {
+    setTesting(true);
+    try {
+      const result = await sendTelegramTestMessage();
+      messageApi.success(result.message || ru.telegramSettings.testSuccess);
+    } catch (caughtError) {
+      const detail = axios.isAxiosError(caughtError) ? caughtError.response?.data?.detail : null;
+      messageApi.error(detail || ru.telegramSettings.testError);
+    } finally {
+      setTesting(false);
+    }
+  }
+
   useEffect(() => {
     void refreshSettings();
   }, []);
@@ -143,6 +164,17 @@ export function TelegramSettingsPage() {
           <Form.Item label={ru.telegramSettings.form.adminTelegramId} name="admin_telegram_id">
             <Input placeholder="123456789" />
           </Form.Item>
+          <Space wrap>
+            <Button
+              disabled={!settings?.bot_token_set || !settings.admin_telegram_id}
+              icon={<SendOutlined />}
+              loading={testing}
+              onClick={() => void sendTestMessage()}
+            >
+              {ru.telegramSettings.sendTest}
+            </Button>
+            <Typography.Text type="secondary">{ru.telegramSettings.testHint}</Typography.Text>
+          </Space>
         </section>
 
         <section className="settings-section">

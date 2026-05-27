@@ -19,6 +19,11 @@ class TelegramSettingsRead(BaseModel):
     admin_email: EmailStr
 
 
+class TelegramTestMessageResult(BaseModel):
+    ok: bool
+    message: str
+
+
 class TelegramSettingsUpdate(BaseModel):
     bot_username: str | None = Field(default=None, max_length=64)
     bot_token: str | None = Field(default=None, max_length=256)
