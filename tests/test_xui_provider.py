@@ -1,4 +1,5 @@
 import json
+from urllib.parse import parse_qs
 
 import httpx
 import pytest
@@ -76,8 +77,38 @@ async def test_xui_provider_uses_bearer_token_without_login() -> None:
 
 
 @pytest.mark.asyncio
+async def test_xui_provider_preserves_web_base_path() -> None:
+    requests: list[str] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        requests.append(f"{request.method} {request.url.path}")
+        if request.url.path == "/randompath/panel/api/inbounds/addClient":
+            return httpx.Response(200, json={"success": True})
+        return httpx.Response(404)
+
+    async with httpx.AsyncClient(
+        transport=httpx.MockTransport(handler),
+        base_url="https://xui.example/randompath/",
+    ) as client:
+        provider = XuiProvider(
+            XuiCredentials(
+                panel_url="https://xui.example/randompath",
+                api_token="secret-token",
+            ),
+            client=client,
+        )
+        ref = await provider.create_client(
+            inbound_id="7",
+            payload={"id": "uuid-1", "email": "user-1", "enable": True},
+        )
+
+    assert requests == ["POST /randompath/panel/api/inbounds/addClient"]
+    assert ref.subscription_url == "https://xui.example/randompath/sub/user-1"
+
+
+@pytest.mark.asyncio
 async def test_xui_provider_create_client_returns_external_ref() -> None:
-    bodies: list[dict[str, object]] = []
+    bodies: list[dict[str, list[str]]] = []
 
     def handler(request: httpx.Request) -> httpx.Response:
         if request.url.path == "/csrf-token":
@@ -85,7 +116,7 @@ async def test_xui_provider_create_client_returns_external_ref() -> None:
         if request.url.path == "/login":
             return httpx.Response(200, json={"success": True})
         if request.url.path == "/panel/api/inbounds/addClient":
-            bodies.append(json.loads(request.content.decode()))
+            bodies.append(parse_qs(request.content.decode()))
             return httpx.Response(200, json={"success": True})
         return httpx.Response(404)
 
@@ -108,8 +139,8 @@ async def test_xui_provider_create_client_returns_external_ref() -> None:
 
     assert ref.external_id == "7:uuid-1:user-1"
     assert ref.subscription_url == "https://xui.example/sub/user-1"
-    assert bodies[0]["id"] == 7
-    assert json.loads(str(bodies[0]["settings"]))["clients"][0]["email"] == "user-1"
+    assert bodies[0]["id"] == ["7"]
+    assert json.loads(bodies[0]["settings"][0])["clients"][0]["email"] == "user-1"
 
 
 @pytest.mark.asyncio

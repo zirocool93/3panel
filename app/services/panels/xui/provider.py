@@ -31,7 +31,7 @@ class XuiProvider:
         self._credentials = credentials
         self._owned_client = client is None
         self._client = client or httpx.AsyncClient(
-            base_url=credentials.panel_url.rstrip("/"),
+            base_url=_base_url(credentials.panel_url),
             timeout=timeout,
             follow_redirects=True,
         )
@@ -76,14 +76,14 @@ class XuiProvider:
         return True
 
     async def get_inbounds(self) -> list[XuiInbound]:
-        payload = await self._request("GET", "/panel/api/inbounds/list")
+        payload = await self._request("GET", "panel/api/inbounds/list")
         items = payload.get("obj") if isinstance(payload, Mapping) else None
         if not isinstance(items, list):
             return []
         return [XuiInbound.model_validate(item) for item in items]
 
     async def get_clients(self) -> list[XuiClient]:
-        payload = await self._request("GET", "/panel/api/inbounds/list")
+        payload = await self._request("GET", "panel/api/inbounds/list")
         items = payload.get("obj") if isinstance(payload, Mapping) else None
         if not isinstance(items, list):
             return []
@@ -96,8 +96,8 @@ class XuiProvider:
     async def create_client(
         self, *, inbound_id: str, payload: dict[str, object]
     ) -> PanelClientRef:
-        body = {"id": int(inbound_id), "settings": json.dumps({"clients": [payload]})}
-        await self._request("POST", "/panel/api/inbounds/addClient", json=body)
+        body = _client_form_body(inbound_id=inbound_id, payload=payload)
+        await self._request("POST", "panel/api/inbounds/addClient", data=body)
         client_uuid = str(
             payload.get("id") or payload.get("client_uuid") or payload.get("uuid") or ""
         )
@@ -112,15 +112,15 @@ class XuiProvider:
         ref = _unpack_client_id(client_id)
         await self._request(
             "POST",
-            f"/panel/api/inbounds/updateClient/{ref.client_uuid}",
-            json={"id": int(ref.inbound_id), "settings": json.dumps({"clients": [payload]})},
+            f"panel/api/inbounds/updateClient/{ref.client_uuid}",
+            data=_client_form_body(inbound_id=ref.inbound_id, payload=payload),
         )
 
     async def delete_client(self, *, client_id: str) -> None:
         ref = _unpack_client_id(client_id)
         await self._request(
             "POST",
-            f"/panel/api/inbounds/{int(ref.inbound_id)}/delClient/{ref.client_uuid}",
+            f"panel/api/inbounds/{int(ref.inbound_id)}/delClient/{ref.client_uuid}",
         )
 
     async def disable_client(self, *, client_id: str) -> None:
@@ -141,12 +141,12 @@ class XuiProvider:
         ref = _unpack_client_id(client_id)
         await self._request(
             "POST",
-            f"/panel/api/inbounds/{int(ref.inbound_id)}/resetClientTraffic/{ref.email}",
+            f"panel/api/inbounds/{int(ref.inbound_id)}/resetClientTraffic/{ref.email}",
         )
 
     async def get_client_stats(self, *, client_id: str) -> dict[str, object]:
         ref = _unpack_client_id(client_id)
-        payload = await self._request("GET", f"/panel/api/inbounds/getClientTraffics/{ref.email}")
+        payload = await self._request("GET", f"panel/api/inbounds/getClientTraffics/{ref.email}")
         obj = payload.get("obj") if isinstance(payload, Mapping) else None
         if not isinstance(obj, Mapping):
             return {}
@@ -166,9 +166,12 @@ class XuiProvider:
         headers.setdefault("X-Requested-With", "XMLHttpRequest")
         if not _is_safe_method(method) and not self._credentials.api_token:
             headers.update(self._unsafe_request_headers())
-        response = await self._client.request(method, path, headers=headers, **kwargs)
+        request_path = path.lstrip("/")
+        response = await self._client.request(method, request_path, headers=headers, **kwargs)
         if response.status_code >= 400:
-            raise XuiRequestError(f"3X-UI request {path} failed with HTTP {response.status_code}.")
+            raise XuiRequestError(
+                f"3X-UI request {request_path} failed with HTTP {response.status_code}."
+            )
         payload = _json_or_empty(response)
         if payload.get("success") is False:
             raise XuiRequestError(str(payload.get("msg") or f"3X-UI request {path} failed."))
@@ -177,7 +180,7 @@ class XuiProvider:
     async def _login_request(self) -> httpx.Response:
         await self._ensure_csrf_token()
         return await self._client.post(
-            "/login",
+            "login",
             data={
                 "username": self._credentials.username,
                 "password": self._credentials.password,
@@ -189,7 +192,7 @@ class XuiProvider:
         if self._csrf_token is not None:
             return
         response = await self._client.get(
-            "/csrf-token",
+            "csrf-token",
             headers={"X-Requested-With": "XMLHttpRequest"},
         )
         if response.status_code == 404:
@@ -219,6 +222,17 @@ class _ClientId:
 
 def _pack_client_id(*, inbound_id: str, client_uuid: str, email: str) -> str:
     return f"{inbound_id}:{client_uuid}:{email}"
+
+
+def _base_url(panel_url: str) -> str:
+    return panel_url.rstrip("/") + "/"
+
+
+def _client_form_body(*, inbound_id: str, payload: dict[str, object]) -> dict[str, str]:
+    return {
+        "id": str(int(inbound_id)),
+        "settings": json.dumps({"clients": [payload]}),
+    }
 
 
 def _unpack_client_id(client_id: str) -> _ClientId:
