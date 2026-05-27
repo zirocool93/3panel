@@ -256,7 +256,7 @@ def _subscription_read(subscription: VpnSubscription) -> ClientSubscriptionRead:
         started_at=subscription.started_at,
         expires_at=subscription.expires_at,
         subscription_token=subscription.subscription_token,
-        nodes_count=len(subscription.nodes),
+        nodes_count=len(subscription.nodes) if "nodes" in subscription.__dict__ else 0,
         admin_comment=subscription.admin_comment,
         created_at=subscription.created_at,
     )

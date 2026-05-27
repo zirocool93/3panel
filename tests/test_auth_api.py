@@ -153,6 +153,58 @@ async def test_admin_login_and_profile(monkeypatch) -> None:
             }
             assert {"manual", "telegram_stars", "cardlink", "yookassa"} <= enabled_methods
 
+            tariff_response = await client.post(
+                "/api/tariffs",
+                headers={"Authorization": f"Bearer {access_token}"},
+                json={
+                    "name": "Premium 30",
+                    "duration_days": 30,
+                    "traffic_limit_gb": 100,
+                    "device_limit": 3,
+                    "price": "300.00",
+                    "currency": "RUB",
+                    "is_trial": False,
+                    "enabled": True,
+                    "is_visible": True,
+                    "sort_order": 10,
+                    "inbound_links": [],
+                    "prices": [
+                        {
+                            "payment_method": "manual",
+                            "amount": "300.00",
+                            "currency": "RUB",
+                            "enabled": True,
+                        },
+                        {
+                            "payment_method": "telegram_stars",
+                            "amount": "600.00",
+                            "currency": "XTR",
+                            "enabled": True,
+                        },
+                    ],
+                },
+            )
+            assert tariff_response.status_code == 201
+            tariff_id = tariff_response.json()["id"]
+
+            client_response = await client.post(
+                "/api/clients",
+                headers={"Authorization": f"Bearer {access_token}"},
+                json={"display_name": "Manual Client"},
+            )
+            assert client_response.status_code == 201
+            client_id = client_response.json()["id"]
+
+            subscription_response = await client.post(
+                f"/api/clients/{client_id}/subscriptions",
+                headers={"Authorization": f"Bearer {access_token}"},
+                json={"tariff_id": tariff_id, "payment_method": "telegram_stars"},
+            )
+            assert subscription_response.status_code == 200
+            subscription = subscription_response.json()
+            assert subscription["price_amount"] == "600.00"
+            assert subscription["currency"] == "XTR"
+
             test_message_response = await client.post(
                 "/api/system/telegram-settings/test-message",
                 headers={"Authorization": f"Bearer {access_token}"},
