@@ -96,8 +96,16 @@ class XuiProvider:
     async def create_client(
         self, *, inbound_id: str, payload: dict[str, object]
     ) -> PanelClientRef:
+        await self.ensure_inbound_exists(inbound_id=inbound_id)
         body = _client_form_body(inbound_id=inbound_id, payload=payload)
-        await self._request("POST", "panel/api/inbounds/addClient", data=body)
+        await self._request_with_path_fallbacks(
+            "POST",
+            paths=[
+                "panel/api/inbounds/addClient",
+                "panel/inbound/addClient",
+            ],
+            data=body,
+        )
         client_uuid = str(
             payload.get("id") or payload.get("client_uuid") or payload.get("uuid") or ""
         )
@@ -107,6 +115,15 @@ class XuiProvider:
             external_id=external_id,
             subscription_url=await self.get_subscription_url(client_id=external_id),
         )
+
+    async def ensure_inbound_exists(self, *, inbound_id: str) -> None:
+        payload = await self._request("GET", f"panel/api/inbounds/get/{int(inbound_id)}")
+        if payload.get("success") is False:
+            message = payload.get("msg") or f"3X-UI inbound {inbound_id} not found."
+            raise XuiRequestError(str(message))
+        obj = payload.get("obj") if isinstance(payload, Mapping) else None
+        if obj in (None, ""):
+            raise XuiRequestError(f"3X-UI inbound {inbound_id} not found.")
 
     async def update_client(self, *, client_id: str, payload: dict[str, object]) -> None:
         ref = _unpack_client_id(client_id)
@@ -169,13 +186,29 @@ class XuiProvider:
         request_path = path.lstrip("/")
         response = await self._client.request(method, request_path, headers=headers, **kwargs)
         if response.status_code >= 400:
+            full_url = str(self._client.build_request(method, request_path).url)
             raise XuiRequestError(
-                f"3X-UI request {request_path} failed with HTTP {response.status_code}."
+                f"3X-UI request {full_url} failed with HTTP {response.status_code}."
             )
         payload = _json_or_empty(response)
         if payload.get("success") is False:
             raise XuiRequestError(str(payload.get("msg") or f"3X-UI request {path} failed."))
         return payload
+
+    async def _request_with_path_fallbacks(
+        self, method: str, *, paths: list[str], **kwargs: Any
+    ) -> dict[str, Any]:
+        last_error: XuiRequestError | None = None
+        for path in paths:
+            try:
+                return await self._request(method, path, **kwargs)
+            except XuiRequestError as exc:
+                last_error = exc
+                if "HTTP 404" not in str(exc):
+                    raise
+        if last_error:
+            raise last_error
+        raise XuiRequestError("3X-UI request failed: no endpoint paths configured.")
 
     async def _login_request(self) -> httpx.Response:
         await self._ensure_csrf_token()
