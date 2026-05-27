@@ -1,10 +1,17 @@
-import { EditOutlined, IdcardOutlined, PlusOutlined, ReloadOutlined } from "@ant-design/icons";
+import {
+  DeleteOutlined,
+  EditOutlined,
+  IdcardOutlined,
+  PlusOutlined,
+  ReloadOutlined,
+} from "@ant-design/icons";
 import {
   Alert,
   Button,
   Form,
   Input,
   InputNumber,
+  Popconfirm,
   Select,
   Space,
   Switch,
@@ -21,6 +28,7 @@ import {
   adjustClientBalance,
   createClient,
   createClientSubscription,
+  deleteClient,
   listClients,
   updateClient,
   type ClientPayload,
@@ -72,6 +80,7 @@ export function ClientsPage() {
   const [editingClient, setEditingClient] = useState<ClientRead | null>(null);
   const [loading, setLoading] = useState(false);
   const [savingClient, setSavingClient] = useState(false);
+  const [deletingClientId, setDeletingClientId] = useState<number | null>(null);
   const [savingSubscription, setSavingSubscription] = useState(false);
   const [savingBalance, setSavingBalance] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -192,6 +201,23 @@ export function ClientsPage() {
     clientForm.setFieldsValue({ is_blocked: false });
   }
 
+  async function removeClient(client: ClientRead) {
+    setDeletingClientId(client.id);
+    try {
+      await deleteClient(client.id);
+      if (editingClient?.id === client.id) {
+        resetClientForm();
+      }
+      messageApi.success("Клиент удалён.");
+      await refreshClients();
+    } catch (caughtError) {
+      const detail = axios.isAxiosError(caughtError) ? caughtError.response?.data?.detail : null;
+      messageApi.error(detail || "Не удалось удалить клиента.");
+    } finally {
+      setDeletingClientId(null);
+    }
+  }
+
   useEffect(() => {
     clientForm.setFieldsValue({ is_blocked: false });
     subscriptionForm.setFieldsValue({ payment_method: "manual" });
@@ -230,11 +256,22 @@ export function ClientsPage() {
     { title: ru.clients.columns.comment, dataIndex: "comment" },
     {
       title: ru.clients.columns.actions,
-      width: 150,
+      width: 190,
       render: (_, client) => (
-        <Button icon={<EditOutlined />} onClick={() => startEdit(client)}>
-          {ru.tariffs.actions.edit}
-        </Button>
+        <Space wrap>
+          <Button icon={<EditOutlined />} onClick={() => startEdit(client)}>
+            {ru.tariffs.actions.edit}
+          </Button>
+          <Popconfirm
+            cancelText="Отмена"
+            okButtonProps={{ danger: true, loading: deletingClientId === client.id }}
+            okText="Удалить"
+            onConfirm={() => void removeClient(client)}
+            title="Удалить клиента и его локальные подписки?"
+          >
+            <Button danger icon={<DeleteOutlined />} loading={deletingClientId === client.id} />
+          </Popconfirm>
+        </Space>
       ),
     },
   ];

@@ -2,7 +2,7 @@ from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from secrets import token_urlsafe
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Response, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -83,6 +83,22 @@ async def update_client(
             setattr(user, field, data[field])
     await session.commit()
     return _client_read(await _get_client(session, user.id))
+
+
+@router.delete("/{client_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_client(
+    client_id: int,
+    _admin: AdminUser = Depends(get_current_admin),
+    session: AsyncSession = Depends(get_db),
+) -> Response:
+    user = await _get_client(session, client_id)
+    for transaction in list(user.balance_transactions):
+        await session.delete(transaction)
+    for subscription in list(user.subscriptions):
+        await session.delete(subscription)
+    await session.delete(user)
+    await session.commit()
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 @router.post("/{client_id}/subscriptions", response_model=ClientSubscriptionRead)

@@ -1,6 +1,6 @@
 from decimal import Decimal
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Response, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -9,6 +9,7 @@ from app.api.deps import get_current_admin, get_db
 from app.core.enums import PaymentProviderType
 from app.db.models.admin import AdminUser
 from app.db.models.server import Server
+from app.db.models.subscription import VpnSubscription
 from app.db.models.tariff import Tariff, TariffInbound, TariffPrice
 from app.schemas.tariffs import TariffCreate, TariffPriceCreate, TariffRead, TariffUpdate
 
@@ -103,13 +104,29 @@ async def update_tariff(
             for link in payload.inbound_links
         ]
     if payload.prices is not None:
-        tariff.prices = _price_models(
-            payload.prices,
-            fallback_amount=tariff.price,
-            fallback_currency=tariff.currency,
-        )
+        _sync_prices(tariff, payload.prices)
     await session.commit()
     return _tariff_read(await _get_tariff(session, tariff.id))
+
+
+@router.delete("/{tariff_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_tariff(
+    tariff_id: int,
+    _admin: AdminUser = Depends(get_current_admin),
+    session: AsyncSession = Depends(get_db),
+) -> Response:
+    tariff = await _get_tariff(session, tariff_id)
+    subscriptions_count = await session.scalar(
+        select(VpnSubscription.id).where(VpnSubscription.tariff_id == tariff_id).limit(1)
+    )
+    if subscriptions_count is not None:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Нельзя удалить тариф, к которому уже привязаны подписки. Отключите его.",
+        )
+    await session.delete(tariff)
+    await session.commit()
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 async def _get_tariff(session: AsyncSession, tariff_id: int) -> Tariff:
@@ -143,6 +160,40 @@ def _price_models(
             enabled=price.enabled,
         )
         for price in effective_prices
+    ]
+
+
+def _sync_prices(tariff: Tariff, prices: list[TariffPriceCreate]) -> None:
+    normalized_payload = {
+        price.payment_method.value: price
+        for price in prices
+    }
+    existing_by_method = {
+        _normal_payment_method(price.payment_method): price
+        for price in tariff.prices
+    }
+
+    for payment_method, payload in normalized_payload.items():
+        existing = existing_by_method.get(payment_method)
+        if existing:
+            existing.payment_method = payment_method
+            existing.amount = payload.amount
+            existing.currency = payload.currency.upper()
+            existing.enabled = payload.enabled
+        else:
+            tariff.prices.append(
+                TariffPrice(
+                    payment_method=payment_method,
+                    amount=payload.amount,
+                    currency=payload.currency.upper(),
+                    enabled=payload.enabled,
+                )
+            )
+
+    tariff.prices = [
+        price
+        for price in tariff.prices
+        if _normal_payment_method(price.payment_method) in normalized_payload
     ]
 
 

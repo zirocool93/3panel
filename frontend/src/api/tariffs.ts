@@ -68,3 +68,7 @@ export async function updateTariff(
   const response = await api.patch<TariffRead>(`/tariffs/${tariffId}`, payload);
   return response.data;
 }
+
+export async function deleteTariff(tariffId: number): Promise<void> {
+  await api.delete(`/tariffs/${tariffId}`);
+}

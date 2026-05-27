@@ -220,6 +220,76 @@ async def test_admin_login_and_profile(monkeypatch) -> None:
             assert subscription["price_amount"] == "600.00"
             assert subscription["currency"] == "XTR"
 
+            update_tariff_response = await client.patch(
+                f"/api/tariffs/{tariff_id}",
+                headers={"Authorization": f"Bearer {access_token}"},
+                json={
+                    "name": "Premium 30 updated",
+                    "duration_days": 31,
+                    "price": "350.00",
+                    "currency": "RUB",
+                    "prices": [
+                        {
+                            "payment_method": "manual",
+                            "amount": "350.00",
+                            "currency": "RUB",
+                            "enabled": True,
+                        },
+                        {
+                            "payment_method": "telegram_stars",
+                            "amount": "700.00",
+                            "currency": "XTR",
+                            "enabled": True,
+                        },
+                    ],
+                },
+            )
+            assert update_tariff_response.status_code == 200
+            assert update_tariff_response.json()["name"] == "Premium 30 updated"
+            assert update_tariff_response.json()["prices"][0]["payment_method"] == "manual"
+
+            delete_used_tariff_response = await client.delete(
+                f"/api/tariffs/{tariff_id}",
+                headers={"Authorization": f"Bearer {access_token}"},
+            )
+            assert delete_used_tariff_response.status_code == 409
+
+            removable_tariff_response = await client.post(
+                "/api/tariffs",
+                headers={"Authorization": f"Bearer {access_token}"},
+                json={
+                    "name": "Temporary",
+                    "duration_days": 7,
+                    "price": "100.00",
+                    "currency": "RUB",
+                    "is_trial": False,
+                    "enabled": True,
+                    "is_visible": False,
+                    "sort_order": 99,
+                    "inbound_links": [],
+                    "prices": [],
+                },
+            )
+            assert removable_tariff_response.status_code == 201
+            removable_tariff_id = removable_tariff_response.json()["id"]
+            delete_tariff_response = await client.delete(
+                f"/api/tariffs/{removable_tariff_id}",
+                headers={"Authorization": f"Bearer {access_token}"},
+            )
+            assert delete_tariff_response.status_code == 204
+
+            removable_client_response = await client.post(
+                "/api/clients",
+                headers={"Authorization": f"Bearer {access_token}"},
+                json={"display_name": "To delete"},
+            )
+            assert removable_client_response.status_code == 201
+            delete_client_response = await client.delete(
+                f"/api/clients/{removable_client_response.json()['id']}",
+                headers={"Authorization": f"Bearer {access_token}"},
+            )
+            assert delete_client_response.status_code == 204
+
             test_message_response = await client.post(
                 "/api/system/telegram-settings/test-message",
                 headers={"Authorization": f"Bearer {access_token}"},

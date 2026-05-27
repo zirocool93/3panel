@@ -98,6 +98,10 @@ export async function updateClient(
   return response.data;
 }
 
+export async function deleteClient(clientId: number): Promise<void> {
+  await api.delete(`/clients/${clientId}`);
+}
+
 export async function createClientSubscription(
   clientId: number,
   payload: ClientSubscriptionPayload,

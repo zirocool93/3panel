@@ -1,10 +1,11 @@
-import { EditOutlined, ReloadOutlined, TagsOutlined } from "@ant-design/icons";
+import { DeleteOutlined, EditOutlined, ReloadOutlined, TagsOutlined } from "@ant-design/icons";
 import {
   Alert,
   Button,
   Form,
   Input,
   InputNumber,
+  Popconfirm,
   Select,
   Space,
   Switch,
@@ -25,6 +26,7 @@ import {
 } from "../../api/servers";
 import {
   createTariff,
+  deleteTariff,
   listTariffs,
   updateTariff,
   type TariffInboundLink,
@@ -65,6 +67,7 @@ export function TariffsPage() {
   const [editingTariff, setEditingTariff] = useState<TariffRead | null>(null);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [deletingId, setDeletingId] = useState<number | null>(null);
   const [inboundsLoading, setInboundsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [messageApi, messageContext] = message.useMessage();
@@ -167,6 +170,23 @@ export function TariffsPage() {
     form.setFieldsValue(defaultFormValues);
   }
 
+  async function removeTariff(tariff: TariffRead) {
+    setDeletingId(tariff.id);
+    try {
+      await deleteTariff(tariff.id);
+      if (editingTariff?.id === tariff.id) {
+        resetForm();
+      }
+      messageApi.success("Тариф удалён.");
+      await refreshTariffs();
+    } catch (caughtError) {
+      const detail = axios.isAxiosError(caughtError) ? caughtError.response?.data?.detail : null;
+      messageApi.error(detail || "Не удалось удалить тариф.");
+    } finally {
+      setDeletingId(null);
+    }
+  }
+
   useEffect(() => {
     form.setFieldsValue(defaultFormValues);
     void refreshTariffs();
@@ -260,9 +280,20 @@ export function TariffsPage() {
       title: ru.tariffs.columns.actions,
       width: 150,
       render: (_, tariff) => (
-        <Button icon={<EditOutlined />} onClick={() => startEdit(tariff)}>
-          {ru.tariffs.actions.edit}
-        </Button>
+        <Space wrap>
+          <Button icon={<EditOutlined />} onClick={() => startEdit(tariff)}>
+            {ru.tariffs.actions.edit}
+          </Button>
+          <Popconfirm
+            cancelText="Отмена"
+            okButtonProps={{ danger: true, loading: deletingId === tariff.id }}
+            okText="Удалить"
+            onConfirm={() => void removeTariff(tariff)}
+            title="Удалить тариф?"
+          >
+            <Button danger icon={<DeleteOutlined />} loading={deletingId === tariff.id} />
+          </Popconfirm>
+        </Space>
       ),
     },
   ];
