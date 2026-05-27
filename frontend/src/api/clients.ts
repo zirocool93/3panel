@@ -14,9 +14,25 @@ export type ClientSubscriptionRead = {
   started_at: string | null;
   expires_at: string | null;
   subscription_token: string;
+  subscription_url: string | null;
+  subscription_qr: string | null;
   nodes_count: number;
+  nodes: ClientSubscriptionNodeRead[];
   admin_comment: string | null;
   created_at: string;
+};
+
+export type ClientSubscriptionNodeRead = {
+  id: number;
+  server_id: number;
+  inbound_id: string;
+  protocol: string;
+  email: string | null;
+  client_uuid: string | null;
+  sub_id: string | null;
+  status: string;
+  subscription_url: string | null;
+  subscription_qr: string | null;
 };
 
 export type ClientTransactionRead = {

@@ -4,11 +4,14 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from app.api.deps import get_db, settings_dep
 from app.api.main import app
 from app.core.config import Settings
+from app.core.crypto import encrypt_secret
 from app.core.enums import AdminRole
 from app.core.security import hash_password
 from app.db.base import Base
 from app.db.models.admin import AdminUser
+from app.db.models.server import Server
 from app.db.models.tariff import TariffPrice
+from app.services.panels.base import PanelClientRef
 
 
 async def test_admin_login_and_profile(monkeypatch) -> None:
@@ -32,11 +35,32 @@ async def test_admin_login_and_profile(monkeypatch) -> None:
         async with session_factory() as session:
             yield session
 
-    app.dependency_overrides[get_db] = override_get_db
-    app.dependency_overrides[settings_dep] = lambda: Settings(
+    test_settings = Settings(
         credentials_encryption_key="1eU1yI-x0dUaLYprksH70z9RiPz8AwYI2sf2QSwRJH4="
     )
+    app.dependency_overrides[get_db] = override_get_db
+    app.dependency_overrides[settings_dep] = lambda: test_settings
     sent_test_messages = 0
+    created_xui_payloads: list[dict[str, object]] = []
+
+    class FakeXuiProvider:
+        def __init__(self, *_args, **_kwargs) -> None:
+            pass
+
+        async def __aenter__(self) -> "FakeXuiProvider":
+            return self
+
+        async def __aexit__(self, *_args: object) -> None:
+            return None
+
+        async def create_client(
+            self, *, inbound_id: str, payload: dict[str, object]
+        ) -> PanelClientRef:
+            created_xui_payloads.append({"inbound_id": inbound_id, **payload})
+            return PanelClientRef(
+                external_id=f"{inbound_id}:{payload['id']}:{payload['email']}",
+                subscription_url=f"https://xui.example/sub/{payload['email']}",
+            )
 
     async def fake_send_telegram_test_message(_runtime_settings) -> None:
         nonlocal sent_test_messages
@@ -46,6 +70,7 @@ async def test_admin_login_and_profile(monkeypatch) -> None:
         "app.api.routers.system.send_telegram_test_message",
         fake_send_telegram_test_message,
     )
+    monkeypatch.setattr("app.api.routers.clients.XuiProvider", FakeXuiProvider)
     try:
         transport = ASGITransport(app=app)
         async with AsyncClient(transport=transport, base_url="http://test") as client:
@@ -289,6 +314,72 @@ async def test_admin_login_and_profile(monkeypatch) -> None:
                 headers={"Authorization": f"Bearer {access_token}"},
             )
             assert delete_client_response.status_code == 204
+
+            async with session_factory() as session:
+                server = Server(
+                    name="XUI",
+                    country="DE",
+                    panel_url="https://xui.example",
+                    api_token_encrypted=encrypt_secret("token", settings=test_settings),
+                    enabled=True,
+                )
+                session.add(server)
+                await session.commit()
+                server_id = server.id
+
+            provision_tariff_response = await client.post(
+                "/api/tariffs",
+                headers={"Authorization": f"Bearer {access_token}"},
+                json={
+                    "name": "Provisioned",
+                    "duration_days": 30,
+                    "traffic_limit_gb": 50,
+                    "device_limit": 2,
+                    "price": "300.00",
+                    "currency": "RUB",
+                    "is_trial": False,
+                    "enabled": True,
+                    "is_visible": True,
+                    "sort_order": 20,
+                    "inbound_links": [
+                        {
+                            "server_id": server_id,
+                            "inbound_id": "101",
+                            "inbound_remark": "vless",
+                            "protocol": "vless",
+                        },
+                        {
+                            "server_id": server_id,
+                            "inbound_id": "102",
+                            "inbound_remark": "hy2",
+                            "protocol": "hysteria2",
+                        },
+                    ],
+                    "prices": [],
+                },
+            )
+            assert provision_tariff_response.status_code == 201
+            provision_subscription_response = await client.post(
+                f"/api/clients/{client_id}/subscriptions",
+                headers={"Authorization": f"Bearer {access_token}"},
+                json={
+                    "tariff_id": provision_tariff_response.json()["id"],
+                    "payment_method": "manual",
+                },
+            )
+            assert provision_subscription_response.status_code == 200
+            provision_subscription = provision_subscription_response.json()
+            assert provision_subscription["nodes_count"] == 2
+            assert provision_subscription["subscription_url"].startswith("https://xui.example/sub/")
+            vless_payload = next(
+                item for item in created_xui_payloads if item["inbound_id"] == "101"
+            )
+            hysteria_payload = next(
+                item for item in created_xui_payloads if item["inbound_id"] == "102"
+            )
+            assert vless_payload["flow"] == "xtls-rprx-vision"
+            assert hysteria_payload["auth"]
+            assert hysteria_payload["password"] == hysteria_payload["auth"]
 
             test_message_response = await client.post(
                 "/api/system/telegram-settings/test-message",

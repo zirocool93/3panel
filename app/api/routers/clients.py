@@ -1,28 +1,41 @@
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
-from secrets import token_urlsafe
+from secrets import token_hex, token_urlsafe
+from uuid import uuid4
 
 from fastapi import APIRouter, Depends, HTTPException, Response, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from app.api.deps import get_current_admin, get_db
-from app.core.enums import BalanceTransactionType, PaymentProviderType, SubscriptionStatus
+from app.api.deps import get_current_admin, get_db, settings_dep
+from app.core.config import Settings
+from app.core.crypto import CredentialEncryptionError, decrypt_secret
+from app.core.enums import (
+    BalanceTransactionType,
+    PaymentProviderType,
+    SubscriptionNodeStatus,
+    SubscriptionStatus,
+)
 from app.db.models.admin import AdminUser
 from app.db.models.billing import BalanceTransaction
-from app.db.models.subscription import VpnSubscription
-from app.db.models.tariff import Tariff
+from app.db.models.server import Server
+from app.db.models.subscription import VpnSubscription, VpnSubscriptionNode
+from app.db.models.tariff import Tariff, TariffInbound
 from app.db.models.user import User
 from app.schemas.clients import (
     ClientBalanceAdjust,
     ClientCreate,
     ClientRead,
     ClientSubscriptionCreate,
+    ClientSubscriptionNodeRead,
     ClientSubscriptionRead,
     ClientTransactionRead,
     ClientUpdate,
 )
+from app.services.panels.xui import XuiCredentials, XuiProvider
+from app.services.panels.xui.exceptions import XuiError
+from app.services.qrcode import qr_png_data_url
 
 router = APIRouter(prefix="/clients", tags=["clients"])
 
@@ -107,12 +120,12 @@ async def create_client_subscription(
     payload: ClientSubscriptionCreate,
     admin: AdminUser = Depends(get_current_admin),
     session: AsyncSession = Depends(get_db),
+    settings: Settings = Depends(settings_dep),
 ) -> ClientSubscriptionRead:
     user = await _get_client(session, client_id)
-    tariff = await session.get(Tariff, payload.tariff_id)
+    tariff = await _get_tariff_for_subscription(session, payload.tariff_id)
     if not tariff:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Тариф не найден.")
-    await session.refresh(tariff, ["prices"])
     duration_days = payload.duration_days or tariff.duration_days
     traffic_limit_gb = payload.traffic_limit_gb or tariff.traffic_limit_gb
     price_amount, currency = _subscription_price(tariff, payload)
@@ -136,6 +149,7 @@ async def create_client_subscription(
         admin_comment=payload.admin_comment,
     )
     session.add(subscription)
+    await session.flush()
     if _normal_payment_method(payload.payment_method) == PaymentProviderType.BALANCE.value:
         _add_balance_transaction(
             session=session,
@@ -148,8 +162,15 @@ async def create_client_subscription(
             subscription=subscription,
             description=f"Списание за подписку: {tariff.name}",
         )
+    await _provision_subscription_nodes(
+        session=session,
+        subscription=subscription,
+        tariff=tariff,
+        user=user,
+        settings=settings,
+    )
     await session.commit()
-    return _subscription_read(subscription)
+    return _subscription_read(await _get_subscription(session, subscription.id))
 
 
 @router.post("/{client_id}/balance", response_model=ClientRead)
@@ -212,6 +233,31 @@ async def _get_client(session: AsyncSession, client_id: int) -> User:
     return user
 
 
+async def _get_subscription(session: AsyncSession, subscription_id: int) -> VpnSubscription:
+    result = await session.execute(
+        select(VpnSubscription)
+        .options(
+            selectinload(VpnSubscription.tariff),
+            selectinload(VpnSubscription.nodes),
+        )
+        .where(VpnSubscription.id == subscription_id)
+    )
+    subscription = result.scalar_one()
+    return subscription
+
+
+async def _get_tariff_for_subscription(session: AsyncSession, tariff_id: int) -> Tariff | None:
+    result = await session.execute(
+        select(Tariff)
+        .options(
+            selectinload(Tariff.prices),
+            selectinload(Tariff.inbound_links).selectinload(TariffInbound.server),
+        )
+        .where(Tariff.id == tariff_id)
+    )
+    return result.scalar_one_or_none()
+
+
 async def _ensure_telegram_id_free(
     session: AsyncSession, telegram_id: int, exclude_user_id: int | None = None
 ) -> None:
@@ -254,6 +300,11 @@ def _client_read(user: User) -> ClientRead:
 
 def _subscription_read(subscription: VpnSubscription) -> ClientSubscriptionRead:
     tariff = subscription.tariff
+    nodes = [_node_read(node) for node in subscription.nodes]
+    subscription_url = next(
+        (node.subscription_url for node in nodes if node.subscription_url),
+        None,
+    )
     return ClientSubscriptionRead(
         id=subscription.id,
         tariff_id=subscription.tariff_id,
@@ -272,9 +323,31 @@ def _subscription_read(subscription: VpnSubscription) -> ClientSubscriptionRead:
         started_at=subscription.started_at,
         expires_at=subscription.expires_at,
         subscription_token=subscription.subscription_token,
-        nodes_count=len(subscription.nodes) if "nodes" in subscription.__dict__ else 0,
+        subscription_url=subscription_url,
+        subscription_qr=qr_png_data_url(subscription_url) if subscription_url else None,
+        nodes_count=len(nodes),
+        nodes=nodes,
         admin_comment=subscription.admin_comment,
         created_at=subscription.created_at,
+    )
+
+
+def _node_read(node: VpnSubscriptionNode) -> ClientSubscriptionNodeRead:
+    subscription_url = None
+    if isinstance(node.raw_config, dict):
+        raw_url = node.raw_config.get("subscription_url")
+        subscription_url = str(raw_url) if raw_url else None
+    return ClientSubscriptionNodeRead(
+        id=node.id,
+        server_id=node.server_id,
+        inbound_id=node.inbound_id,
+        protocol=node.protocol,
+        email=node.email,
+        client_uuid=node.client_uuid,
+        sub_id=node.sub_id,
+        status=_normal_node_status(node.status),
+        subscription_url=subscription_url,
+        subscription_qr=qr_png_data_url(subscription_url) if subscription_url else None,
     )
 
 
@@ -301,6 +374,151 @@ def _subscription_price(
     if tariff_price:
         return tariff_price.amount, tariff_price.currency.upper()
     return tariff.price, tariff.currency.upper()
+
+
+async def _provision_subscription_nodes(
+    *,
+    session: AsyncSession,
+    subscription: VpnSubscription,
+    tariff: Tariff,
+    user: User,
+    settings: Settings,
+) -> None:
+    if not tariff.inbound_links:
+        subscription.status = SubscriptionStatus.PENDING
+        return
+
+    created_nodes = 0
+    failed_nodes = 0
+    for link in tariff.inbound_links:
+        node = await _create_xui_node(
+            session=session,
+            subscription=subscription,
+            user=user,
+            tariff=tariff,
+            link=link,
+            settings=settings,
+        )
+        if node.status == SubscriptionNodeStatus.ACTIVE:
+            created_nodes += 1
+        else:
+            failed_nodes += 1
+
+    subscription.is_multi_server = created_nodes + failed_nodes > 1
+    subscription.status = (
+        SubscriptionStatus.ACTIVE if created_nodes else SubscriptionStatus.PROVISIONING_FAILED
+    )
+
+
+async def _create_xui_node(
+    *,
+    session: AsyncSession,
+    subscription: VpnSubscription,
+    user: User,
+    tariff: Tariff,
+    link: TariffInbound,
+    settings: Settings,
+) -> VpnSubscriptionNode:
+    server = link.server
+    protocol = (link.protocol or "vless").lower()
+    client_uuid = str(uuid4())
+    email = _xui_client_email(user=user, subscription=subscription, link=link)
+    sub_id = token_urlsafe(10)
+    client_payload = _xui_client_payload(
+        client_uuid=client_uuid,
+        email=email,
+        sub_id=sub_id,
+        protocol=protocol,
+        subscription=subscription,
+    )
+    node = VpnSubscriptionNode(
+        subscription=subscription,
+        server=server,
+        inbound_id=link.inbound_id,
+        protocol=protocol,
+        client_uuid=client_uuid,
+        email=email,
+        sub_id=sub_id,
+        status=SubscriptionNodeStatus.PENDING,
+        raw_config={"request": client_payload},
+    )
+    session.add(node)
+
+    if not server.enabled:
+        node.status = SubscriptionNodeStatus.FAILED
+        node.raw_config = {"request": client_payload, "error": "Сервер отключён."}
+        return node
+
+    try:
+        async with _provider_for(server, settings=settings) as provider:
+            ref = await provider.create_client(inbound_id=link.inbound_id, payload=client_payload)
+    except (CredentialEncryptionError, XuiError) as exc:
+        node.status = SubscriptionNodeStatus.FAILED
+        node.raw_config = {"request": client_payload, "error": str(exc)}
+        return node
+
+    node.xui_client_id = ref.external_id
+    node.status = SubscriptionNodeStatus.ACTIVE
+    node.raw_config = {
+        "request": client_payload,
+        "subscription_url": ref.subscription_url,
+    }
+    return node
+
+
+def _xui_client_payload(
+    *,
+    client_uuid: str,
+    email: str,
+    sub_id: str,
+    protocol: str,
+    subscription: VpnSubscription,
+) -> dict[str, object]:
+    payload: dict[str, object] = {
+        "id": client_uuid,
+        "email": email,
+        "enable": True,
+        "subId": sub_id,
+        "limitIp": subscription.device_limit or 0,
+        "totalGB": subscription.traffic_limit_bytes or 0,
+        "expiryTime": _expiry_millis(subscription.expires_at),
+    }
+    if protocol == "vless":
+        payload["flow"] = "xtls-rprx-vision"
+    if "hysteria" in protocol:
+        auth = token_hex(16)
+        payload["auth"] = auth
+        payload["password"] = auth
+    return payload
+
+
+def _xui_client_email(*, user: User, subscription: VpnSubscription, link: TariffInbound) -> str:
+    prefix = user.username or user.display_name or f"user{user.id}"
+    safe_prefix = "".join(char for char in prefix.lower() if char.isalnum() or char in {"-", "_"})
+    safe_prefix = safe_prefix[:24] or f"user{user.id}"
+    return f"{safe_prefix}-{subscription.id}-{link.server_id}-{link.inbound_id}"
+
+
+def _expiry_millis(value: datetime | None) -> int:
+    return int(value.timestamp() * 1000) if value else 0
+
+
+def _provider_for(server: Server, *, settings: Settings) -> XuiProvider:
+    username = decrypt_secret(server.username_encrypted, settings=settings)
+    password = decrypt_secret(server.password_encrypted, settings=settings)
+    api_token = decrypt_secret(server.api_token_encrypted, settings=settings)
+    if not api_token and (not username or not password):
+        raise CredentialEncryptionError(
+            "Для сервера укажите API token или логин и пароль 3X-UI."
+        )
+    return XuiProvider(
+        XuiCredentials(
+            panel_url=server.panel_url,
+            username=username,
+            password=password,
+            api_token=api_token,
+        )
+    )
 
 
 def _add_balance_transaction(
@@ -375,4 +593,10 @@ def _normal_payment_method(value: str | PaymentProviderType | None) -> str | Non
 def _normal_transaction_type(value: str | BalanceTransactionType) -> str:
     raw = value.value if isinstance(value, BalanceTransactionType) else str(value)
     enum_value = BalanceTransactionType.__members__.get(raw.upper())
+    return enum_value.value if enum_value else raw.lower()
+
+
+def _normal_node_status(value: str | SubscriptionNodeStatus) -> str:
+    raw = value.value if isinstance(value, SubscriptionNodeStatus) else str(value)
+    enum_value = SubscriptionNodeStatus.__members__.get(raw.upper())
     return enum_value.value if enum_value else raw.lower()

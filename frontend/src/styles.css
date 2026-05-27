@@ -150,6 +150,14 @@ body {
   align-self: end;
 }
 
+.subscription-qr {
+  background: #fff;
+  border: 1px solid #d5dfda;
+  border-radius: 6px;
+  height: 96px;
+  width: 96px;
+}
+
 .updates-page {
   max-width: 960px;
 }

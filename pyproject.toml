@@ -25,6 +25,7 @@ dependencies = [
   "pydantic-settings>=2.9,<3",
   "pyjwt[crypto]>=2.10,<3",
   "python-multipart>=0.0.20,<1",
+  "qrcode[pil]>=8.0,<9",
   "redis>=6.1,<7",
   "sqlalchemy[asyncio]>=2.0.41,<3",
   "structlog>=25.3,<26",

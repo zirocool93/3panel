@@ -35,6 +35,7 @@ import {
   type ClientRead,
   type ClientSubscriptionPayload,
   type ClientSubscriptionRead,
+  type ClientSubscriptionNodeRead,
   type ClientTransactionRead,
 } from "../../api/clients";
 import { listPaymentMethods, type PaymentMethodRead } from "../../api/payments";
@@ -498,7 +499,67 @@ function renderSubscriptions(client: ClientRead) {
     { title: ru.clients.columns.expires, render: (_, subscription) => formatDate(subscription.expires_at) },
     { title: ru.clients.columns.nodes, dataIndex: "nodes_count" },
   ];
-  return <Table columns={columns} dataSource={client.subscriptions} pagination={false} rowKey="id" />;
+  return (
+    <Table
+      columns={columns}
+      dataSource={client.subscriptions}
+      expandable={{ expandedRowRender: renderSubscriptionNodes }}
+      pagination={false}
+      rowKey="id"
+    />
+  );
+}
+
+function renderSubscriptionNodes(subscription: ClientSubscriptionRead) {
+  const columns: TableColumnsType<ClientSubscriptionNodeRead> = [
+    { title: "Сервер", dataIndex: "server_id" },
+    { title: "Inbound", dataIndex: "inbound_id" },
+    { title: "Протокол", dataIndex: "protocol" },
+    { title: "Email", dataIndex: "email" },
+    { title: "Статус", dataIndex: "status" },
+    {
+      title: "Ссылка",
+      render: (_, node) =>
+        node.subscription_url ? (
+          <Typography.Link copyable href={node.subscription_url} target="_blank">
+            {node.subscription_url}
+          </Typography.Link>
+        ) : (
+          "—"
+        ),
+    },
+    {
+      title: "QR",
+      width: 120,
+      render: (_, node) =>
+        node.subscription_qr ? (
+          <img alt="QR подписки" className="subscription-qr" src={node.subscription_qr} />
+        ) : (
+          "—"
+        ),
+    },
+  ];
+  return (
+    <Space direction="vertical" size="middle">
+      {subscription.subscription_url ? (
+        <Space align="start" wrap>
+          <Typography.Link copyable href={subscription.subscription_url} target="_blank">
+            {subscription.subscription_url}
+          </Typography.Link>
+          {subscription.subscription_qr ? (
+            <img alt="QR подписки" className="subscription-qr" src={subscription.subscription_qr} />
+          ) : null}
+        </Space>
+      ) : null}
+      <Table
+        columns={columns}
+        dataSource={subscription.nodes}
+        locale={{ emptyText: "Ноды 3X-UI пока не созданы." }}
+        pagination={false}
+        rowKey="id"
+      />
+    </Space>
+  );
 }
 
 function renderTransactions(client: ClientRead) {

@@ -73,9 +73,25 @@ class ClientSubscriptionRead(BaseModel):
     started_at: datetime | None
     expires_at: datetime | None
     subscription_token: str
+    subscription_url: str | None = None
+    subscription_qr: str | None = None
     nodes_count: int = 0
+    nodes: list["ClientSubscriptionNodeRead"] = Field(default_factory=list)
     admin_comment: str | None
     created_at: datetime
+
+
+class ClientSubscriptionNodeRead(BaseModel):
+    id: int
+    server_id: int
+    inbound_id: str
+    protocol: str
+    email: str | None
+    client_uuid: str | None
+    sub_id: str | None
+    status: str
+    subscription_url: str | None = None
+    subscription_qr: str | None = None
 
 
 class ClientRead(BaseModel):
