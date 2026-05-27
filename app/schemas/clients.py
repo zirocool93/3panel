@@ -36,6 +36,18 @@ class ClientSubscriptionCreate(BaseModel):
     admin_comment: str | None = Field(default=None, max_length=500)
 
 
+class ClientSubscriptionUpdate(BaseModel):
+    tariff_id: int | None = None
+    status: SubscriptionStatus | None = None
+    payment_method: str | None = Field(default=None, min_length=1, max_length=64)
+    price_amount: Decimal | None = Field(default=None, ge=0)
+    currency: str | None = Field(default=None, min_length=3, max_length=3)
+    duration_days: int | None = Field(default=None, gt=0)
+    traffic_limit_gb: int | None = Field(default=None, gt=0)
+    device_limit: int | None = Field(default=None, gt=0)
+    admin_comment: str | None = Field(default=None, max_length=500)
+
+
 class ClientBalanceAdjust(BaseModel):
     amount: Decimal
     currency: str = Field(default="RUB", min_length=3, max_length=16)
@@ -92,6 +104,7 @@ class ClientSubscriptionNodeRead(BaseModel):
     status: str
     subscription_url: str | None = None
     subscription_qr: str | None = None
+    error: str | None = None
 
 
 class ClientRead(BaseModel):

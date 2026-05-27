@@ -33,6 +33,7 @@ export type ClientSubscriptionNodeRead = {
   status: string;
   subscription_url: string | null;
   subscription_qr: string | null;
+  error: string | null;
 };
 
 export type ClientTransactionRead = {
@@ -127,6 +128,35 @@ export async function createClientSubscription(
     payload,
   );
   return response.data;
+}
+
+export async function updateClientSubscription(
+  clientId: number,
+  subscriptionId: number,
+  payload: Partial<ClientSubscriptionPayload> & { status?: string },
+): Promise<ClientSubscriptionRead> {
+  const response = await api.patch<ClientSubscriptionRead>(
+    `/clients/${clientId}/subscriptions/${subscriptionId}`,
+    payload,
+  );
+  return response.data;
+}
+
+export async function provisionClientSubscription(
+  clientId: number,
+  subscriptionId: number,
+): Promise<ClientSubscriptionRead> {
+  const response = await api.post<ClientSubscriptionRead>(
+    `/clients/${clientId}/subscriptions/${subscriptionId}/provision`,
+  );
+  return response.data;
+}
+
+export async function deleteClientSubscription(
+  clientId: number,
+  subscriptionId: number,
+): Promise<void> {
+  await api.delete(`/clients/${clientId}/subscriptions/${subscriptionId}`);
 }
 
 export async function adjustClientBalance(

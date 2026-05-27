@@ -30,6 +30,7 @@ from app.schemas.clients import (
     ClientSubscriptionCreate,
     ClientSubscriptionNodeRead,
     ClientSubscriptionRead,
+    ClientSubscriptionUpdate,
     ClientTransactionRead,
     ClientUpdate,
 )
@@ -173,6 +174,151 @@ async def create_client_subscription(
     return _subscription_read(await _get_subscription(session, subscription.id))
 
 
+@router.patch("/{client_id}/subscriptions/{subscription_id}", response_model=ClientSubscriptionRead)
+async def update_client_subscription(
+    client_id: int,
+    subscription_id: int,
+    payload: ClientSubscriptionUpdate,
+    _admin: AdminUser = Depends(get_current_admin),
+    session: AsyncSession = Depends(get_db),
+    settings: Settings = Depends(settings_dep),
+) -> ClientSubscriptionRead:
+    subscription = await _get_client_subscription(session, client_id, subscription_id)
+    data = payload.model_dump(exclude_unset=True)
+    tariff_changed = False
+    tariff = subscription.tariff
+    if "tariff_id" in data and payload.tariff_id != subscription.tariff_id:
+        if payload.tariff_id is None:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="Укажите тариф подписки.",
+            )
+        tariff = await _get_tariff_for_subscription(session, payload.tariff_id)
+        if not tariff:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Тариф не найден.")
+        subscription.tariff = tariff
+        tariff_changed = True
+
+    if "payment_method" in data:
+        subscription.payment_method = payload.payment_method
+    if "price_amount" in data:
+        subscription.price_amount = payload.price_amount
+    if "currency" in data:
+        subscription.currency = payload.currency.upper() if payload.currency else None
+    if "duration_days" in data and payload.duration_days is not None:
+        subscription.duration_days = payload.duration_days
+        base_date = subscription.started_at or datetime.now(UTC)
+        subscription.started_at = base_date
+        subscription.expires_at = base_date + timedelta(days=payload.duration_days)
+    if "traffic_limit_gb" in data:
+        subscription.traffic_limit_bytes = (
+            payload.traffic_limit_gb * 1024**3 if payload.traffic_limit_gb else None
+        )
+    if "device_limit" in data:
+        subscription.device_limit = payload.device_limit
+    if "admin_comment" in data:
+        subscription.admin_comment = payload.admin_comment
+    if "status" in data and payload.status is not None:
+        subscription.status = payload.status
+
+    if tariff_changed:
+        delete_errors = await _delete_subscription_nodes_from_xui(
+            subscription=subscription,
+            settings=settings,
+        )
+        if delete_errors:
+            raise HTTPException(
+                status_code=status.HTTP_502_BAD_GATEWAY,
+                detail="Не удалось удалить старые клиенты из 3X-UI: " + "; ".join(delete_errors),
+            )
+        for node in list(subscription.nodes):
+            await session.delete(node)
+        await session.flush()
+        await _provision_subscription_nodes(
+            session=session,
+            subscription=subscription,
+            tariff=tariff,
+            user=subscription.user,
+            settings=settings,
+        )
+    else:
+        await _sync_subscription_nodes(subscription=subscription, settings=settings)
+        _refresh_subscription_status(subscription)
+
+    await session.commit()
+    return _subscription_read(await _get_subscription(session, subscription.id))
+
+
+@router.post(
+    "/{client_id}/subscriptions/{subscription_id}/provision",
+    response_model=ClientSubscriptionRead,
+)
+async def provision_client_subscription(
+    client_id: int,
+    subscription_id: int,
+    _admin: AdminUser = Depends(get_current_admin),
+    session: AsyncSession = Depends(get_db),
+    settings: Settings = Depends(settings_dep),
+) -> ClientSubscriptionRead:
+    subscription = await _get_client_subscription(session, client_id, subscription_id)
+    if not subscription.tariff_id:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="У подписки не указан тариф для создания клиентов в 3X-UI.",
+        )
+    tariff = await _get_tariff_for_subscription(session, subscription.tariff_id)
+    if not tariff:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Тариф не найден.")
+
+    for node in list(subscription.nodes):
+        if node.status != SubscriptionNodeStatus.ACTIVE:
+            await session.delete(node)
+    await session.flush()
+    existing_keys = {(node.server_id, node.inbound_id) for node in subscription.nodes}
+    links = [
+        link
+        for link in tariff.inbound_links
+        if (link.server_id, link.inbound_id) not in existing_keys
+    ]
+    await _provision_subscription_links(
+        session=session,
+        subscription=subscription,
+        tariff=tariff,
+        user=subscription.user,
+        settings=settings,
+        links=links,
+    )
+    _refresh_subscription_status(subscription)
+    await session.commit()
+    return _subscription_read(await _get_subscription(session, subscription.id))
+
+
+@router.delete(
+    "/{client_id}/subscriptions/{subscription_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+async def delete_client_subscription(
+    client_id: int,
+    subscription_id: int,
+    _admin: AdminUser = Depends(get_current_admin),
+    session: AsyncSession = Depends(get_db),
+    settings: Settings = Depends(settings_dep),
+) -> Response:
+    subscription = await _get_client_subscription(session, client_id, subscription_id)
+    delete_errors = await _delete_subscription_nodes_from_xui(
+        subscription=subscription,
+        settings=settings,
+    )
+    if delete_errors:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="Не удалось удалить клиентов из 3X-UI: " + "; ".join(delete_errors),
+        )
+    await session.delete(subscription)
+    await session.commit()
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
 @router.post("/{client_id}/balance", response_model=ClientRead)
 async def adjust_client_balance(
     client_id: int,
@@ -237,12 +383,31 @@ async def _get_subscription(session: AsyncSession, subscription_id: int) -> VpnS
     result = await session.execute(
         select(VpnSubscription)
         .options(
+            selectinload(VpnSubscription.user),
             selectinload(VpnSubscription.tariff),
-            selectinload(VpnSubscription.nodes),
+            selectinload(VpnSubscription.nodes).selectinload(VpnSubscriptionNode.server),
         )
         .where(VpnSubscription.id == subscription_id)
     )
     subscription = result.scalar_one()
+    return subscription
+
+
+async def _get_client_subscription(
+    session: AsyncSession, client_id: int, subscription_id: int
+) -> VpnSubscription:
+    result = await session.execute(
+        select(VpnSubscription)
+        .options(
+            selectinload(VpnSubscription.user),
+            selectinload(VpnSubscription.tariff),
+            selectinload(VpnSubscription.nodes).selectinload(VpnSubscriptionNode.server),
+        )
+        .where(VpnSubscription.id == subscription_id, VpnSubscription.user_id == client_id)
+    )
+    subscription = result.scalar_one_or_none()
+    if not subscription:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Подписка не найдена.")
     return subscription
 
 
@@ -334,9 +499,12 @@ def _subscription_read(subscription: VpnSubscription) -> ClientSubscriptionRead:
 
 def _node_read(node: VpnSubscriptionNode) -> ClientSubscriptionNodeRead:
     subscription_url = None
+    error = None
     if isinstance(node.raw_config, dict):
         raw_url = node.raw_config.get("subscription_url")
         subscription_url = str(raw_url) if raw_url else None
+        raw_error = node.raw_config.get("error")
+        error = str(raw_error) if raw_error else None
     return ClientSubscriptionNodeRead(
         id=node.id,
         server_id=node.server_id,
@@ -348,6 +516,7 @@ def _node_read(node: VpnSubscriptionNode) -> ClientSubscriptionNodeRead:
         status=_normal_node_status(node.status),
         subscription_url=subscription_url,
         subscription_qr=qr_png_data_url(subscription_url) if subscription_url else None,
+        error=error,
     )
 
 
@@ -388,9 +557,28 @@ async def _provision_subscription_nodes(
         subscription.status = SubscriptionStatus.PENDING
         return
 
+    await _provision_subscription_links(
+        session=session,
+        subscription=subscription,
+        tariff=tariff,
+        user=user,
+        settings=settings,
+        links=list(tariff.inbound_links),
+    )
+
+
+async def _provision_subscription_links(
+    *,
+    session: AsyncSession,
+    subscription: VpnSubscription,
+    tariff: Tariff,
+    user: User,
+    settings: Settings,
+    links: list[TariffInbound],
+) -> None:
     created_nodes = 0
     failed_nodes = 0
-    for link in tariff.inbound_links:
+    for link in links:
         node = await _create_xui_node(
             session=session,
             subscription=subscription,
@@ -408,6 +596,57 @@ async def _provision_subscription_nodes(
     subscription.status = (
         SubscriptionStatus.ACTIVE if created_nodes else SubscriptionStatus.PROVISIONING_FAILED
     )
+
+
+async def _sync_subscription_nodes(
+    *, subscription: VpnSubscription, settings: Settings
+) -> None:
+    for node in subscription.nodes:
+        if node.status not in {SubscriptionNodeStatus.ACTIVE, SubscriptionNodeStatus.DISABLED}:
+            continue
+        if not node.xui_client_id or not node.server:
+            continue
+        payload = _xui_update_payload(node=node, subscription=subscription)
+        try:
+            async with _provider_for(node.server, settings=settings) as provider:
+                await provider.update_client(client_id=node.xui_client_id, payload=payload)
+        except (CredentialEncryptionError, XuiError) as exc:
+            raw_config = dict(node.raw_config or {})
+            raw_config["request"] = payload
+            raw_config["error"] = str(exc)
+            node.raw_config = raw_config
+            node.status = SubscriptionNodeStatus.FAILED
+
+
+async def _delete_subscription_nodes_from_xui(
+    *, subscription: VpnSubscription, settings: Settings
+) -> list[str]:
+    errors: list[str] = []
+    for node in subscription.nodes:
+        if not node.xui_client_id or not node.server:
+            continue
+        try:
+            async with _provider_for(node.server, settings=settings) as provider:
+                await provider.delete_client(client_id=node.xui_client_id)
+        except (CredentialEncryptionError, XuiError) as exc:
+            errors.append(f"{node.email or node.id}: {exc}")
+    return errors
+
+
+def _refresh_subscription_status(subscription: VpnSubscription) -> None:
+    if subscription.status == SubscriptionStatus.DISABLED:
+        return
+    active_nodes = [
+        node for node in subscription.nodes if node.status == SubscriptionNodeStatus.ACTIVE
+    ]
+    failed_nodes = [
+        node for node in subscription.nodes if node.status == SubscriptionNodeStatus.FAILED
+    ]
+    subscription.is_multi_server = len(subscription.nodes) > 1
+    if active_nodes:
+        subscription.status = SubscriptionStatus.ACTIVE
+    elif failed_nodes:
+        subscription.status = SubscriptionStatus.PROVISIONING_FAILED
 
 
 async def _create_xui_node(
@@ -479,6 +718,8 @@ def _xui_client_payload(
         "email": email,
         "enable": True,
         "subId": sub_id,
+        "tgId": "",
+        "reset": 0,
         "limitIp": subscription.device_limit or 0,
         "totalGB": subscription.traffic_limit_bytes or 0,
         "expiryTime": _expiry_millis(subscription.expires_at),
@@ -489,6 +730,36 @@ def _xui_client_payload(
         auth = token_hex(16)
         payload["auth"] = auth
         payload["password"] = auth
+    return payload
+
+
+def _xui_update_payload(
+    *, node: VpnSubscriptionNode, subscription: VpnSubscription
+) -> dict[str, object]:
+    raw_request = (
+        (node.raw_config or {}).get("request")
+        if isinstance(node.raw_config, dict)
+        else None
+    )
+    payload = dict(raw_request) if isinstance(raw_request, dict) else {}
+    payload.setdefault("id", node.client_uuid or "")
+    payload.setdefault("email", node.email or "")
+    payload.setdefault("subId", node.sub_id or "")
+    payload.setdefault("tgId", "")
+    payload.setdefault("reset", 0)
+    if node.protocol == "vless":
+        payload["flow"] = "xtls-rprx-vision"
+    if "hysteria" in node.protocol and not (payload.get("auth") or payload.get("password")):
+        auth = token_hex(16)
+        payload["auth"] = auth
+        payload["password"] = auth
+    payload["enable"] = subscription.status not in {
+        SubscriptionStatus.DISABLED,
+        SubscriptionStatus.EXPIRED,
+    }
+    payload["limitIp"] = subscription.device_limit or 0
+    payload["totalGB"] = subscription.traffic_limit_bytes or 0
+    payload["expiryTime"] = _expiry_millis(subscription.expires_at)
     return payload
 
 

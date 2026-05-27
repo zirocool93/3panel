@@ -29,8 +29,11 @@ import {
   createClient,
   createClientSubscription,
   deleteClient,
+  deleteClientSubscription,
   listClients,
+  provisionClientSubscription,
   updateClient,
+  updateClientSubscription,
   type ClientPayload,
   type ClientRead,
   type ClientSubscriptionPayload,
@@ -79,9 +82,15 @@ export function ClientsPage() {
   const [paymentMethods, setPaymentMethods] = useState<PaymentMethodRead[]>([]);
   const [tariffs, setTariffs] = useState<TariffRead[]>([]);
   const [editingClient, setEditingClient] = useState<ClientRead | null>(null);
+  const [editingSubscription, setEditingSubscription] = useState<{
+    clientId: number;
+    subscription: ClientSubscriptionRead;
+  } | null>(null);
   const [loading, setLoading] = useState(false);
   const [savingClient, setSavingClient] = useState(false);
   const [deletingClientId, setDeletingClientId] = useState<number | null>(null);
+  const [deletingSubscriptionId, setDeletingSubscriptionId] = useState<number | null>(null);
+  const [provisioningSubscriptionId, setProvisioningSubscriptionId] = useState<number | null>(null);
   const [savingSubscription, setSavingSubscription] = useState(false);
   const [savingBalance, setSavingBalance] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -149,14 +158,24 @@ export function ClientsPage() {
         device_limit: values.device_limit,
         admin_comment: values.admin_comment || undefined,
       };
-      await createClientSubscription(values.client_id, payload);
-      subscriptionForm.resetFields();
-      subscriptionForm.setFieldsValue({ payment_method: "manual" });
-      messageApi.success(ru.clients.subscriptionSuccess);
+      if (editingSubscription) {
+        await updateClientSubscription(
+          editingSubscription.clientId,
+          editingSubscription.subscription.id,
+          payload,
+        );
+        messageApi.success("Подписка обновлена.");
+      } else {
+        await createClientSubscription(values.client_id, payload);
+        messageApi.success(ru.clients.subscriptionSuccess);
+      }
+      resetSubscriptionForm();
       await refreshClients();
     } catch (caughtError) {
       const detail = axios.isAxiosError(caughtError) ? caughtError.response?.data?.detail : null;
-      messageApi.error(detail || ru.clients.subscriptionError);
+      messageApi.error(
+        detail || (editingSubscription ? "Не удалось обновить подписку." : ru.clients.subscriptionError),
+      );
     } finally {
       setSavingSubscription(false);
     }
@@ -202,6 +221,28 @@ export function ClientsPage() {
     clientForm.setFieldsValue({ is_blocked: false });
   }
 
+  function startEditSubscription(client: ClientRead, subscription: ClientSubscriptionRead) {
+    setEditingSubscription({ clientId: client.id, subscription });
+    subscriptionForm.setFieldsValue({
+      client_id: client.id,
+      tariff_id: subscription.tariff_id || undefined,
+      payment_method: subscription.payment_method || "manual",
+      price_amount: subscription.price_amount ? Number(subscription.price_amount) : undefined,
+      currency: subscription.currency || undefined,
+      duration_days: subscription.duration_days || undefined,
+      traffic_limit_gb: subscription.traffic_limit_gb || undefined,
+      device_limit: subscription.device_limit || undefined,
+      admin_comment: subscription.admin_comment || undefined,
+    });
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }
+
+  function resetSubscriptionForm() {
+    setEditingSubscription(null);
+    subscriptionForm.resetFields();
+    subscriptionForm.setFieldsValue({ payment_method: "manual" });
+  }
+
   async function removeClient(client: ClientRead) {
     setDeletingClientId(client.id);
     try {
@@ -216,6 +257,37 @@ export function ClientsPage() {
       messageApi.error(detail || "Не удалось удалить клиента.");
     } finally {
       setDeletingClientId(null);
+    }
+  }
+
+  async function removeSubscription(client: ClientRead, subscription: ClientSubscriptionRead) {
+    setDeletingSubscriptionId(subscription.id);
+    try {
+      await deleteClientSubscription(client.id, subscription.id);
+      if (editingSubscription?.subscription.id === subscription.id) {
+        resetSubscriptionForm();
+      }
+      messageApi.success("Подписка удалена.");
+      await refreshClients();
+    } catch (caughtError) {
+      const detail = axios.isAxiosError(caughtError) ? caughtError.response?.data?.detail : null;
+      messageApi.error(detail || "Не удалось удалить подписку.");
+    } finally {
+      setDeletingSubscriptionId(null);
+    }
+  }
+
+  async function retryProvision(client: ClientRead, subscription: ClientSubscriptionRead) {
+    setProvisioningSubscriptionId(subscription.id);
+    try {
+      await provisionClientSubscription(client.id, subscription.id);
+      messageApi.success("Создание клиентов в 3X-UI запущено повторно.");
+      await refreshClients();
+    } catch (caughtError) {
+      const detail = axios.isAxiosError(caughtError) ? caughtError.response?.data?.detail : null;
+      messageApi.error(detail || "Не удалось создать клиентов в 3X-UI.");
+    } finally {
+      setProvisioningSubscriptionId(null);
     }
   }
 
@@ -399,6 +471,7 @@ export function ClientsPage() {
             rules={[{ required: true, message: ru.clients.form.required }]}
           >
             <Select
+              disabled={Boolean(editingSubscription)}
               options={clients.map((client) => ({
                 label: client.display_name || client.username || `#${client.id}`,
                 value: client.id,
@@ -442,9 +515,14 @@ export function ClientsPage() {
             <Input.TextArea rows={2} />
           </Form.Item>
           <Form.Item className="form-actions">
-            <Button htmlType="submit" loading={savingSubscription} type="primary">
-              {ru.clients.subscription}
-            </Button>
+            <Space wrap>
+              <Button htmlType="submit" loading={savingSubscription} type="primary">
+                {editingSubscription ? "Сохранить подписку" : ru.clients.subscription}
+              </Button>
+              {editingSubscription ? (
+                <Button onClick={resetSubscriptionForm}>{ru.common.cancel}</Button>
+              ) : null}
+            </Space>
           </Form.Item>
         </Form>
       </section>
@@ -454,7 +532,17 @@ export function ClientsPage() {
         <Table
           columns={columns}
           dataSource={clients}
-          expandable={{ expandedRowRender: renderClientDetails }}
+          expandable={{
+            expandedRowRender: (client) =>
+              renderClientDetails(
+                client,
+                startEditSubscription,
+                removeSubscription,
+                retryProvision,
+                deletingSubscriptionId,
+                provisioningSubscriptionId,
+              ),
+          }}
           loading={loading}
           locale={{ emptyText: ru.clients.empty }}
           pagination={{ pageSize: 10 }}
@@ -466,16 +554,37 @@ export function ClientsPage() {
   );
 }
 
-function renderClientDetails(client: ClientRead) {
+function renderClientDetails(
+  client: ClientRead,
+  onEditSubscription: (client: ClientRead, subscription: ClientSubscriptionRead) => void,
+  onDeleteSubscription: (client: ClientRead, subscription: ClientSubscriptionRead) => void,
+  onRetryProvision: (client: ClientRead, subscription: ClientSubscriptionRead) => void,
+  deletingSubscriptionId: number | null,
+  provisioningSubscriptionId: number | null,
+) {
   return (
     <Space className="grid-wide" direction="vertical" size="large">
-      {renderSubscriptions(client)}
+      {renderSubscriptions(
+        client,
+        onEditSubscription,
+        onDeleteSubscription,
+        onRetryProvision,
+        deletingSubscriptionId,
+        provisioningSubscriptionId,
+      )}
       {renderTransactions(client)}
     </Space>
   );
 }
 
-function renderSubscriptions(client: ClientRead) {
+function renderSubscriptions(
+  client: ClientRead,
+  onEditSubscription: (client: ClientRead, subscription: ClientSubscriptionRead) => void,
+  onDeleteSubscription: (client: ClientRead, subscription: ClientSubscriptionRead) => void,
+  onRetryProvision: (client: ClientRead, subscription: ClientSubscriptionRead) => void,
+  deletingSubscriptionId: number | null,
+  provisioningSubscriptionId: number | null,
+) {
   if (!client.subscriptions.length) {
     return <Typography.Text type="secondary">{ru.clients.noSubscriptions}</Typography.Text>;
   }
@@ -498,6 +607,39 @@ function renderSubscriptions(client: ClientRead) {
     },
     { title: ru.clients.columns.expires, render: (_, subscription) => formatDate(subscription.expires_at) },
     { title: ru.clients.columns.nodes, dataIndex: "nodes_count" },
+    {
+      title: ru.clients.columns.actions,
+      width: 260,
+      render: (_, subscription) => (
+        <Space wrap>
+          <Button size="small" icon={<EditOutlined />} onClick={() => onEditSubscription(client, subscription)}>
+            {ru.tariffs.actions.edit}
+          </Button>
+          <Button
+            icon={<ReloadOutlined />}
+            loading={provisioningSubscriptionId === subscription.id}
+            onClick={() => onRetryProvision(client, subscription)}
+            size="small"
+          >
+            Повторить 3X-UI
+          </Button>
+          <Popconfirm
+            cancelText="Отмена"
+            okButtonProps={{ danger: true, loading: deletingSubscriptionId === subscription.id }}
+            okText="Удалить"
+            onConfirm={() => onDeleteSubscription(client, subscription)}
+            title="Удалить подписку и клиентов из 3X-UI?"
+          >
+            <Button
+              danger
+              icon={<DeleteOutlined />}
+              loading={deletingSubscriptionId === subscription.id}
+              size="small"
+            />
+          </Popconfirm>
+        </Space>
+      ),
+    },
   ];
   return (
     <Table
@@ -516,7 +658,19 @@ function renderSubscriptionNodes(subscription: ClientSubscriptionRead) {
     { title: "Inbound", dataIndex: "inbound_id" },
     { title: "Протокол", dataIndex: "protocol" },
     { title: "Email", dataIndex: "email" },
-    { title: "Статус", dataIndex: "status" },
+    {
+      title: "Статус",
+      render: (_, node) => (
+        <Tag color={node.status === "active" ? "green" : node.status === "failed" ? "red" : "default"}>
+          {node.status}
+        </Tag>
+      ),
+    },
+    {
+      title: "Ошибка",
+      render: (_, node) =>
+        node.error ? <Typography.Text type="danger">{node.error}</Typography.Text> : "—",
+    },
     {
       title: "Ссылка",
       render: (_, node) =>

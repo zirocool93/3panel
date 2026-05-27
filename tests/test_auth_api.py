@@ -42,6 +42,8 @@ async def test_admin_login_and_profile(monkeypatch) -> None:
     app.dependency_overrides[settings_dep] = lambda: test_settings
     sent_test_messages = 0
     created_xui_payloads: list[dict[str, object]] = []
+    updated_xui_payloads: list[dict[str, object]] = []
+    deleted_xui_clients: list[str] = []
 
     class FakeXuiProvider:
         def __init__(self, *_args, **_kwargs) -> None:
@@ -61,6 +63,12 @@ async def test_admin_login_and_profile(monkeypatch) -> None:
                 external_id=f"{inbound_id}:{payload['id']}:{payload['email']}",
                 subscription_url=f"https://xui.example/sub/{payload['email']}",
             )
+
+        async def update_client(self, *, client_id: str, payload: dict[str, object]) -> None:
+            updated_xui_payloads.append({"client_id": client_id, **payload})
+
+        async def delete_client(self, *, client_id: str) -> None:
+            deleted_xui_clients.append(client_id)
 
     async def fake_send_telegram_test_message(_runtime_settings) -> None:
         nonlocal sent_test_messages
@@ -378,8 +386,50 @@ async def test_admin_login_and_profile(monkeypatch) -> None:
                 item for item in created_xui_payloads if item["inbound_id"] == "102"
             )
             assert vless_payload["flow"] == "xtls-rprx-vision"
+            assert vless_payload["tgId"] == ""
+            assert vless_payload["reset"] == 0
             assert hysteria_payload["auth"]
             assert hysteria_payload["password"] == hysteria_payload["auth"]
+
+            update_subscription_response = await client.patch(
+                f"/api/clients/{client_id}/subscriptions/{provision_subscription['id']}",
+                headers={"Authorization": f"Bearer {access_token}"},
+                json={
+                    "duration_days": 45,
+                    "traffic_limit_gb": 60,
+                    "device_limit": 4,
+                    "admin_comment": "updated",
+                },
+            )
+            assert update_subscription_response.status_code == 200
+            updated_subscription = update_subscription_response.json()
+            assert updated_subscription["duration_days"] == 45
+            assert updated_subscription["traffic_limit_gb"] == 60
+            assert updated_subscription["device_limit"] == 4
+            assert updated_subscription["admin_comment"] == "updated"
+            assert updated_xui_payloads
+
+            retry_subscription_response = await client.post(
+                f"/api/clients/{client_id}/subscriptions/{provision_subscription['id']}/provision",
+                headers={"Authorization": f"Bearer {access_token}"},
+            )
+            assert retry_subscription_response.status_code == 200
+
+            removable_subscription_response = await client.post(
+                f"/api/clients/{client_id}/subscriptions",
+                headers={"Authorization": f"Bearer {access_token}"},
+                json={
+                    "tariff_id": provision_tariff_response.json()["id"],
+                    "payment_method": "manual",
+                },
+            )
+            assert removable_subscription_response.status_code == 200
+            delete_subscription_response = await client.delete(
+                f"/api/clients/{client_id}/subscriptions/{removable_subscription_response.json()['id']}",
+                headers={"Authorization": f"Bearer {access_token}"},
+            )
+            assert delete_subscription_response.status_code == 204
+            assert deleted_xui_clients
 
             test_message_response = await client.post(
                 "/api/system/telegram-settings/test-message",
