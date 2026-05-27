@@ -3,6 +3,7 @@ import { Navigate, Outlet, createBrowserRouter } from "react-router-dom";
 import { AdminLayout } from "../components/AdminLayout";
 import { authStore } from "../store/auth";
 import { DashboardPage } from "../pages/dashboard/DashboardPage";
+import { ClientsPage } from "../pages/clients/ClientsPage";
 import { LoginPage } from "../pages/login/LoginPage";
 import { TelegramSettingsPage } from "../pages/settings/TelegramSettingsPage";
 import { XuiSettingsPage } from "../pages/settings/XuiSettingsPage";
@@ -28,6 +29,10 @@ export const router = createBrowserRouter([
           {
             path: "/",
             element: <DashboardPage />,
+          },
+          {
+            path: "/clients",
+            element: <ClientsPage />,
           },
           {
             path: "/system/updates",

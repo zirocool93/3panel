@@ -1,6 +1,7 @@
 import {
   CloudServerOutlined,
   DashboardOutlined,
+  IdcardOutlined,
   LogoutOutlined,
   RobotOutlined,
   TagsOutlined,
@@ -22,6 +23,8 @@ export function AdminLayout() {
     ? "xui-settings"
     : location.pathname.startsWith("/settings/telegram")
       ? "telegram-settings"
+    : location.pathname.startsWith("/clients")
+      ? "clients"
     : location.pathname.startsWith("/tariffs")
       ? "tariffs"
     : location.pathname.startsWith("/xui-clients")
@@ -46,6 +49,12 @@ export function AdminLayout() {
               icon: <DashboardOutlined />,
               label: ru.navigation.dashboard,
               onClick: () => navigate("/"),
+            },
+            {
+              key: "clients",
+              icon: <IdcardOutlined />,
+              label: ru.navigation.clients,
+              onClick: () => navigate("/clients"),
             },
             {
               key: "tariffs",

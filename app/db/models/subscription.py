@@ -1,7 +1,8 @@
 from datetime import datetime
+from decimal import Decimal
 from typing import Any
 
-from sqlalchemy import JSON, BigInteger, DateTime, Enum, ForeignKey, String
+from sqlalchemy import JSON, BigInteger, DateTime, Enum, ForeignKey, Integer, Numeric, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.enums import SubscriptionNodeStatus, SubscriptionStatus
@@ -24,6 +25,12 @@ class VpnSubscription(Base, TimestampMixin):
     traffic_used_bytes: Mapped[int] = mapped_column(BigInteger, default=0)
     subscription_token: Mapped[str] = mapped_column(String(128), unique=True, index=True)
     is_multi_server: Mapped[bool] = mapped_column(default=False)
+    payment_method: Mapped[str | None] = mapped_column(String(64))
+    price_amount: Mapped[Decimal | None] = mapped_column(Numeric(14, 2))
+    currency: Mapped[str | None] = mapped_column(String(3))
+    duration_days: Mapped[int | None] = mapped_column(Integer)
+    device_limit: Mapped[int | None] = mapped_column(Integer)
+    admin_comment: Mapped[str | None] = mapped_column(String(500))
 
     user = relationship("User", back_populates="subscriptions")
     tariff = relationship("Tariff", back_populates="subscriptions")
