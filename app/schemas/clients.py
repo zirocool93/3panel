@@ -3,7 +3,7 @@ from decimal import Decimal
 
 from pydantic import BaseModel, Field, model_validator
 
-from app.core.enums import BalanceTransactionType, PaymentProviderType, SubscriptionStatus
+from app.core.enums import SubscriptionStatus
 
 
 class ClientCreate(BaseModel):
@@ -48,8 +48,8 @@ class ClientTransactionRead(BaseModel):
     user_display_name: str | None = None
     admin_id: int | None
     subscription_id: int | None
-    type: BalanceTransactionType
-    payment_method: PaymentProviderType | None
+    type: str
+    payment_method: str | None
     amount: Decimal
     currency: str
     balance_before: Decimal

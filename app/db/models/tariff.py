@@ -1,5 +1,4 @@
 from decimal import Decimal
-from enum import StrEnum
 from typing import TYPE_CHECKING
 
 from sqlalchemy import (
@@ -14,17 +13,12 @@ from sqlalchemy import (
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from app.core.enums import PaymentProviderType, ServerGroupSelectionMode
+from app.core.enums import ServerGroupSelectionMode
 from app.db.base import Base, TimestampMixin
 
 if TYPE_CHECKING:
     from app.db.models.server import Server
     from app.db.models.subscription import VpnSubscription
-
-
-def _enum_values(enum_class: type[StrEnum]) -> list[str]:
-    return [item.value for item in enum_class]
-
 
 class Tariff(Base, TimestampMixin):
     __tablename__ = "tariffs"
@@ -60,14 +54,7 @@ class TariffPrice(Base, TimestampMixin):
 
     id: Mapped[int] = mapped_column(primary_key=True)
     tariff_id: Mapped[int] = mapped_column(ForeignKey("tariffs.id", ondelete="CASCADE"))
-    payment_method: Mapped[PaymentProviderType] = mapped_column(
-        Enum(
-            PaymentProviderType,
-            name="payment_provider_type",
-            native_enum=False,
-            values_callable=_enum_values,
-        )
-    )
+    payment_method: Mapped[str] = mapped_column(String(64))
     amount: Mapped[Decimal] = mapped_column(Numeric(14, 2))
     currency: Mapped[str] = mapped_column(String(16))
     enabled: Mapped[bool] = mapped_column(Boolean, default=True)

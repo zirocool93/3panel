@@ -19,13 +19,13 @@ router = APIRouter(prefix="/tariffs", tags=["tariffs"])
 async def list_tariffs(
     _admin: AdminUser = Depends(get_current_admin),
     session: AsyncSession = Depends(get_db),
-) -> list[Tariff]:
+) -> list[TariffRead]:
     result = await session.execute(
         select(Tariff)
         .options(selectinload(Tariff.inbound_links), selectinload(Tariff.prices))
         .order_by(Tariff.sort_order, Tariff.id)
     )
-    return list(result.scalars())
+    return [_tariff_read(tariff) for tariff in result.scalars()]
 
 
 @router.post("", response_model=TariffRead, status_code=status.HTTP_201_CREATED)
@@ -33,7 +33,7 @@ async def create_tariff(
     payload: TariffCreate,
     _admin: AdminUser = Depends(get_current_admin),
     session: AsyncSession = Depends(get_db),
-) -> Tariff:
+) -> TariffRead:
     await _validate_servers(session, [link.server_id for link in payload.inbound_links])
     tariff = Tariff(
         name=payload.name,
@@ -64,7 +64,7 @@ async def create_tariff(
     )
     session.add(tariff)
     await session.commit()
-    return await _get_tariff(session, tariff.id)
+    return _tariff_read(await _get_tariff(session, tariff.id))
 
 
 @router.patch("/{tariff_id}", response_model=TariffRead)
@@ -73,7 +73,7 @@ async def update_tariff(
     payload: TariffUpdate,
     _admin: AdminUser = Depends(get_current_admin),
     session: AsyncSession = Depends(get_db),
-) -> Tariff:
+) -> TariffRead:
     tariff = await _get_tariff(session, tariff_id)
     data = payload.model_dump(exclude_unset=True)
     for field in (
@@ -109,7 +109,7 @@ async def update_tariff(
             fallback_currency=tariff.currency,
         )
     await session.commit()
-    return await _get_tariff(session, tariff.id)
+    return _tariff_read(await _get_tariff(session, tariff.id))
 
 
 async def _get_tariff(session: AsyncSession, tariff_id: int) -> Tariff:
@@ -137,13 +137,54 @@ def _price_models(
     ]
     return [
         TariffPrice(
-            payment_method=price.payment_method,
+            payment_method=price.payment_method.value,
             amount=price.amount,
             currency=price.currency.upper(),
             enabled=price.enabled,
         )
         for price in effective_prices
     ]
+
+
+def _tariff_read(tariff: Tariff) -> TariffRead:
+    return TariffRead.model_validate(
+        {
+            "id": tariff.id,
+            "name": tariff.name,
+            "description": tariff.description,
+            "duration_days": tariff.duration_days,
+            "traffic_limit_gb": tariff.traffic_limit_gb,
+            "device_limit": tariff.device_limit,
+            "price": tariff.price,
+            "currency": tariff.currency,
+            "is_trial": tariff.is_trial,
+            "enabled": tariff.enabled,
+            "is_visible": tariff.is_visible,
+            "sort_order": tariff.sort_order,
+            "inbound_links": tariff.inbound_links,
+            "prices": [
+                {
+                    "id": price.id,
+                    "payment_method": _normal_payment_method(price.payment_method),
+                    "amount": price.amount,
+                    "currency": price.currency,
+                    "enabled": price.enabled,
+                }
+                for price in tariff.prices
+            ],
+            "created_at": tariff.created_at,
+            "updated_at": tariff.updated_at,
+        }
+    )
+
+
+def _normal_payment_method(value: str | PaymentProviderType | None) -> str | None:
+    if value is None:
+        return None
+    raw = value.value if isinstance(value, PaymentProviderType) else str(value)
+    lowered = raw.lower()
+    enum_value = PaymentProviderType.__members__.get(raw.upper())
+    return enum_value.value if enum_value else lowered
 
 
 async def _validate_servers(session: AsyncSession, server_ids: list[int]) -> None:

@@ -26,8 +26,12 @@ class TariffPriceCreate(BaseModel):
     enabled: bool = True
 
 
-class TariffPriceRead(TariffPriceCreate):
+class TariffPriceRead(BaseModel):
     id: int
+    payment_method: str
+    amount: Decimal
+    currency: str
+    enabled: bool
 
     model_config = {"from_attributes": True}
 

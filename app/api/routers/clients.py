@@ -120,7 +120,7 @@ async def create_client_subscription(
         admin_comment=payload.admin_comment,
     )
     session.add(subscription)
-    if payload.payment_method == PaymentProviderType.BALANCE:
+    if _normal_payment_method(payload.payment_method) == PaymentProviderType.BALANCE.value:
         _add_balance_transaction(
             session=session,
             user=user,
@@ -275,7 +275,10 @@ def _subscription_price(
         (
             price
             for price in tariff.prices
-            if price.payment_method == payment_method and price.enabled
+            if (
+                _normal_payment_method(price.payment_method) == payment_method.value
+                and price.enabled
+            )
         ),
         None,
     )
@@ -303,8 +306,8 @@ def _add_balance_transaction(
         user=user,
         admin_id=admin_id,
         subscription=subscription,
-        type=transaction_type,
-        payment_method=payment_method,
+        type=transaction_type.value,
+        payment_method=payment_method.value if payment_method else None,
         amount=amount,
         currency=currency.upper(),
         balance_before=before,
@@ -322,8 +325,8 @@ def transaction_read(transaction: BalanceTransaction) -> ClientTransactionRead:
         user_display_name=_user_display_name(transaction.user),
         admin_id=transaction.admin_id,
         subscription_id=transaction.subscription_id,
-        type=transaction.type,
-        payment_method=transaction.payment_method,
+        type=_normal_transaction_type(transaction.type),
+        payment_method=_normal_payment_method(transaction.payment_method),
         amount=transaction.amount,
         currency=transaction.currency,
         balance_before=transaction.balance_before,
@@ -343,3 +346,17 @@ def _user_display_name(user: User | None) -> str | None:
     return user.display_name or user.username or " ".join(
         part for part in [user.first_name, user.last_name] if part
     )
+
+
+def _normal_payment_method(value: str | PaymentProviderType | None) -> str | None:
+    if value is None:
+        return None
+    raw = value.value if isinstance(value, PaymentProviderType) else str(value)
+    enum_value = PaymentProviderType.__members__.get(raw.upper())
+    return enum_value.value if enum_value else raw.lower()
+
+
+def _normal_transaction_type(value: str | BalanceTransactionType) -> str:
+    raw = value.value if isinstance(value, BalanceTransactionType) else str(value)
+    enum_value = BalanceTransactionType.__members__.get(raw.upper())
+    return enum_value.value if enum_value else raw.lower()

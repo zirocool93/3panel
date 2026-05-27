@@ -8,6 +8,7 @@ from app.core.enums import AdminRole
 from app.core.security import hash_password
 from app.db.base import Base
 from app.db.models.admin import AdminUser
+from app.db.models.tariff import TariffPrice
 
 
 async def test_admin_login_and_profile(monkeypatch) -> None:
@@ -186,6 +187,20 @@ async def test_admin_login_and_profile(monkeypatch) -> None:
             )
             assert tariff_response.status_code == 201
             tariff_id = tariff_response.json()["id"]
+            async with session_factory() as session:
+                legacy_price = await session.get(
+                    TariffPrice, tariff_response.json()["prices"][0]["id"]
+                )
+                assert legacy_price is not None
+                legacy_price.payment_method = "MANUAL"
+                await session.commit()
+
+            tariffs_response = await client.get(
+                "/api/tariffs",
+                headers={"Authorization": f"Bearer {access_token}"},
+            )
+            assert tariffs_response.status_code == 200
+            assert tariffs_response.json()[0]["prices"][0]["payment_method"] == "manual"
 
             client_response = await client.post(
                 "/api/clients",
