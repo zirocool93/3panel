@@ -20,9 +20,11 @@
 - базовый REST API для управления 3X-UI серверами и проверки inbound;
 - HTTP-provider `XuiProvider` для 3X-UI с поддержкой cookie-login, CSRF-login и Bearer API token
   в 3X-UI 3.1.0+;
+- раздел `Оплата` в web-админке с настройками ручной оплаты, Telegram Stars, Cardlink и ЮKassa;
+- базовые provider-интерфейсы для создания invoice в Cardlink, ЮKassa и Telegram Stars;
 - запуск обновления из админ-панели для owner-роли при явном включении deployment-настроек.
 
-Выдача ключей, платежи, баланс, subscription endpoint, промо и рефералы добавляются на следующих
+Выдача ключей, полноценный order/payment flow, баланс, subscription endpoint, промо и рефералы добавляются на следующих
 этапах.
 
 ## Быстрый локальный запуск

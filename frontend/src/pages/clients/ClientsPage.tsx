@@ -27,6 +27,7 @@ import {
   type ClientSubscriptionPayload,
   type ClientSubscriptionRead,
 } from "../../api/clients";
+import { listPaymentMethods, type PaymentMethodRead } from "../../api/payments";
 import { listTariffs, type TariffRead } from "../../api/tariffs";
 import { ru } from "../../i18n/ru";
 
@@ -56,6 +57,7 @@ export function ClientsPage() {
   const [clientForm] = Form.useForm<ClientForm>();
   const [subscriptionForm] = Form.useForm<SubscriptionForm>();
   const [clients, setClients] = useState<ClientRead[]>([]);
+  const [paymentMethods, setPaymentMethods] = useState<PaymentMethodRead[]>([]);
   const [tariffs, setTariffs] = useState<TariffRead[]>([]);
   const [editingClient, setEditingClient] = useState<ClientRead | null>(null);
   const [loading, setLoading] = useState(false);
@@ -78,6 +80,10 @@ export function ClientsPage() {
 
   async function refreshTariffs() {
     setTariffs(await listTariffs());
+  }
+
+  async function refreshPaymentMethods() {
+    setPaymentMethods(await listPaymentMethods());
   }
 
   async function submitClient(values: ClientForm) {
@@ -160,6 +166,7 @@ export function ClientsPage() {
     subscriptionForm.setFieldsValue({ payment_method: "manual" });
     void refreshClients();
     void refreshTariffs();
+    void refreshPaymentMethods();
   }, [clientForm, subscriptionForm]);
 
   const columns: TableColumnsType<ClientRead> = [
@@ -298,12 +305,9 @@ export function ClientsPage() {
             rules={[{ required: true, message: ru.clients.form.required }]}
           >
             <Select
-              options={[
-                { label: ru.clients.paymentMethods.manual, value: "manual" },
-                { label: ru.clients.paymentMethods.balance, value: "balance" },
-                { label: ru.clients.paymentMethods.telegram_stars, value: "telegram_stars" },
-                { label: ru.clients.paymentMethods.cryptobot, value: "cryptobot" },
-              ]}
+              options={paymentMethods
+                .filter((method) => method.enabled)
+                .map((method) => ({ label: method.label, value: method.code }))}
             />
           </Form.Item>
           <Form.Item label={ru.clients.subscriptionForm.priceAmount} name="price_amount">

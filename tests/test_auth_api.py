@@ -104,6 +104,55 @@ async def test_admin_login_and_profile(monkeypatch) -> None:
             assert saved_settings["socks5_enabled"] is True
             assert saved_settings["socks5_username_set"] is True
 
+            payment_settings_response = await client.get(
+                "/api/payments/settings",
+                headers={"Authorization": f"Bearer {access_token}"},
+            )
+            assert payment_settings_response.status_code == 200
+            assert payment_settings_response.json()["manual_payments_enabled"] is True
+
+            save_payment_settings_response = await client.put(
+                "/api/payments/settings",
+                headers={"Authorization": f"Bearer {access_token}"},
+                json={
+                    "manual_payments_enabled": True,
+                    "manual_payment_instructions": "Оплата переводом после заявки.",
+                    "telegram_stars_enabled": True,
+                    "telegram_stars_rate_rub": 2,
+                    "telegram_stars_invoice_title": "VPN подписка",
+                    "telegram_stars_invoice_description": "Доступ VPNBotX",
+                    "cardlink_enabled": True,
+                    "cardlink_api_base_url": "https://cardlink.link",
+                    "cardlink_shop_id": "shop123",
+                    "cardlink_api_token": "cardlink-token",
+                    "cardlink_currency": "RUB",
+                    "cardlink_locale": "ru",
+                    "cardlink_payer_pays_commission": True,
+                    "cardlink_success_url": "https://vpn.example.com/payment/success",
+                    "cardlink_fail_url": "https://vpn.example.com/payment/fail",
+                    "yookassa_enabled": True,
+                    "yookassa_shop_id": "123456",
+                    "yookassa_secret_key": "yookassa-secret",
+                    "yookassa_return_url": "https://vpn.example.com/payment/return",
+                    "yookassa_currency": "RUB",
+                },
+            )
+            assert save_payment_settings_response.status_code == 200
+            saved_payment_settings = save_payment_settings_response.json()
+            assert saved_payment_settings["telegram_stars_enabled"] is True
+            assert saved_payment_settings["cardlink_api_token_set"] is True
+            assert saved_payment_settings["yookassa_secret_key_set"] is True
+
+            payment_methods_response = await client.get(
+                "/api/payments/methods",
+                headers={"Authorization": f"Bearer {access_token}"},
+            )
+            assert payment_methods_response.status_code == 200
+            enabled_methods = {
+                method["code"] for method in payment_methods_response.json() if method["enabled"]
+            }
+            assert {"manual", "telegram_stars", "cardlink", "yookassa"} <= enabled_methods
+
             test_message_response = await client.post(
                 "/api/system/telegram-settings/test-message",
                 headers={"Authorization": f"Bearer {access_token}"},

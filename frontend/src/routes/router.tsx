@@ -5,6 +5,7 @@ import { authStore } from "../store/auth";
 import { DashboardPage } from "../pages/dashboard/DashboardPage";
 import { ClientsPage } from "../pages/clients/ClientsPage";
 import { LoginPage } from "../pages/login/LoginPage";
+import { PaymentsPage } from "../pages/payments/PaymentsPage";
 import { TelegramSettingsPage } from "../pages/settings/TelegramSettingsPage";
 import { XuiSettingsPage } from "../pages/settings/XuiSettingsPage";
 import { UpdatesPage } from "../pages/system/UpdatesPage";
@@ -41,6 +42,10 @@ export const router = createBrowserRouter([
           {
             path: "/tariffs",
             element: <TariffsPage />,
+          },
+          {
+            path: "/payments",
+            element: <PaymentsPage />,
           },
           {
             path: "/settings/xui",

@@ -13,6 +13,13 @@ class PanelProviderType(StrEnum):
     XUI = "xui"
 
 
+class PaymentProviderType(StrEnum):
+    MANUAL = "manual"
+    TELEGRAM_STARS = "telegram_stars"
+    CARDLINK = "cardlink"
+    YOOKASSA = "yookassa"
+
+
 class ServerHealthStatus(StrEnum):
     UNKNOWN = "unknown"
     ONLINE = "online"

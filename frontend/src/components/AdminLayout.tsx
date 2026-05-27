@@ -7,6 +7,7 @@ import {
   TagsOutlined,
   SyncOutlined,
   TeamOutlined,
+  WalletOutlined,
 } from "@ant-design/icons";
 import { Button, Layout, Menu, Tag, Typography } from "antd";
 import { Outlet, useLocation, useNavigate } from "react-router-dom";
@@ -21,6 +22,8 @@ export function AdminLayout() {
   const location = useLocation();
   const selectedKey = location.pathname.startsWith("/settings/xui")
     ? "xui-settings"
+    : location.pathname.startsWith("/payments")
+      ? "payments"
     : location.pathname.startsWith("/settings/telegram")
       ? "telegram-settings"
     : location.pathname.startsWith("/clients")
@@ -61,6 +64,12 @@ export function AdminLayout() {
               icon: <TagsOutlined />,
               label: ru.navigation.tariffs,
               onClick: () => navigate("/tariffs"),
+            },
+            {
+              key: "payments",
+              icon: <WalletOutlined />,
+              label: ru.navigation.payments,
+              onClick: () => navigate("/payments"),
             },
             {
               key: "xui-settings",
