@@ -1,6 +1,12 @@
 import { api } from "./client";
 
-export type PaymentProviderCode = "manual" | "telegram_stars" | "cardlink" | "yookassa";
+export type PaymentProviderCode =
+  | "manual"
+  | "balance"
+  | "telegram_stars"
+  | "crypto"
+  | "cardlink"
+  | "yookassa";
 
 export type PaymentMethodRead = {
   code: PaymentProviderCode;

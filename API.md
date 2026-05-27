@@ -19,6 +19,9 @@ FastAPI публикует OpenAPI на `/docs`.
 | `GET` | `/api/tariffs` | список тарифов |
 | `POST` | `/api/tariffs` | создание тарифа |
 | `PATCH` | `/api/tariffs/{tariff_id}` | редактирование тарифа |
+| `POST` | `/api/clients/{client_id}/balance` | ручное начисление или списание баланса клиента |
+| `GET` | `/api/clients/{client_id}/transactions` | история оплат и списаний одного клиента |
+| `GET` | `/api/transactions` | общая история транзакций по всем клиентам |
 | `GET` | `/api/payments/methods` | список способов оплаты и их активность |
 | `GET` | `/api/payments/settings` | настройки Telegram Stars, Cardlink, ЮKassa и ручной оплаты |
 | `PUT` | `/api/payments/settings` | сохранение настроек платежных провайдеров |

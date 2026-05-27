@@ -1,13 +1,16 @@
+from decimal import Decimal
+
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.api.deps import get_current_admin, get_db
+from app.core.enums import PaymentProviderType
 from app.db.models.admin import AdminUser
 from app.db.models.server import Server
-from app.db.models.tariff import Tariff, TariffInbound
-from app.schemas.tariffs import TariffCreate, TariffRead, TariffUpdate
+from app.db.models.tariff import Tariff, TariffInbound, TariffPrice
+from app.schemas.tariffs import TariffCreate, TariffPriceCreate, TariffRead, TariffUpdate
 
 router = APIRouter(prefix="/tariffs", tags=["tariffs"])
 
@@ -19,7 +22,7 @@ async def list_tariffs(
 ) -> list[Tariff]:
     result = await session.execute(
         select(Tariff)
-        .options(selectinload(Tariff.inbound_links))
+        .options(selectinload(Tariff.inbound_links), selectinload(Tariff.prices))
         .order_by(Tariff.sort_order, Tariff.id)
     )
     return list(result.scalars())
@@ -53,6 +56,11 @@ async def create_tariff(
             )
             for link in payload.inbound_links
         ],
+        prices=_price_models(
+            payload.prices,
+            fallback_amount=payload.price,
+            fallback_currency=payload.currency,
+        ),
     )
     session.add(tariff)
     await session.commit()
@@ -94,6 +102,12 @@ async def update_tariff(
             )
             for link in payload.inbound_links
         ]
+    if payload.prices is not None:
+        tariff.prices = _price_models(
+            payload.prices,
+            fallback_amount=tariff.price,
+            fallback_currency=tariff.currency,
+        )
     await session.commit()
     return await _get_tariff(session, tariff.id)
 
@@ -101,13 +115,35 @@ async def update_tariff(
 async def _get_tariff(session: AsyncSession, tariff_id: int) -> Tariff:
     result = await session.execute(
         select(Tariff)
-        .options(selectinload(Tariff.inbound_links))
+        .options(selectinload(Tariff.inbound_links), selectinload(Tariff.prices))
         .where(Tariff.id == tariff_id)
     )
     tariff = result.scalar_one_or_none()
     if not tariff:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Тариф не найден.")
     return tariff
+
+
+def _price_models(
+    prices: list[TariffPriceCreate], *, fallback_amount: Decimal, fallback_currency: str
+) -> list[TariffPrice]:
+    effective_prices = prices or [
+        TariffPriceCreate(
+            payment_method=PaymentProviderType.MANUAL,
+            amount=fallback_amount,
+            currency=fallback_currency,
+            enabled=True,
+        )
+    ]
+    return [
+        TariffPrice(
+            payment_method=price.payment_method,
+            amount=price.amount,
+            currency=price.currency.upper(),
+            enabled=price.enabled,
+        )
+        for price in effective_prices
+    ]
 
 
 async def _validate_servers(session: AsyncSession, server_ids: list[int]) -> None:

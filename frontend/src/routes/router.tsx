@@ -10,6 +10,7 @@ import { TelegramSettingsPage } from "../pages/settings/TelegramSettingsPage";
 import { XuiSettingsPage } from "../pages/settings/XuiSettingsPage";
 import { UpdatesPage } from "../pages/system/UpdatesPage";
 import { TariffsPage } from "../pages/tariffs/TariffsPage";
+import { TransactionsPage } from "../pages/transactions/TransactionsPage";
 import { XuiClientsPage } from "../pages/xui-clients/XuiClientsPage";
 
 function ProtectedRoute() {
@@ -46,6 +47,10 @@ export const router = createBrowserRouter([
           {
             path: "/payments",
             element: <PaymentsPage />,
+          },
+          {
+            path: "/transactions",
+            element: <TransactionsPage />,
           },
           {
             path: "/settings/xui",

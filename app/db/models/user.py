@@ -7,6 +7,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.db.base import Base, TimestampMixin
 
 if TYPE_CHECKING:
+    from app.db.models.billing import BalanceTransaction
     from app.db.models.subscription import VpnSubscription
 
 
@@ -28,3 +29,4 @@ class User(Base, TimestampMixin):
 
     referrer: Mapped["User | None"] = relationship(remote_side="User.id")
     subscriptions: Mapped[list["VpnSubscription"]] = relationship(back_populates="user")
+    balance_transactions: Mapped[list["BalanceTransaction"]] = relationship(back_populates="user")

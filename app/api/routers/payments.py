@@ -119,9 +119,19 @@ def _payment_methods(app_settings: AppSettings) -> list[PaymentMethodRead]:
             enabled=app_settings.manual_payments_enabled,
         ),
         PaymentMethodRead(
+            code=PaymentProviderType.BALANCE,
+            label="Баланс",
+            enabled=True,
+        ),
+        PaymentMethodRead(
             code=PaymentProviderType.TELEGRAM_STARS,
             label="Telegram Stars",
             enabled=app_settings.telegram_stars_enabled,
+        ),
+        PaymentMethodRead(
+            code=PaymentProviderType.CRYPTO,
+            label="Крипта",
+            enabled=False,
         ),
         PaymentMethodRead(
             code=PaymentProviderType.CARDLINK,

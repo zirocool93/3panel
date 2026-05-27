@@ -3,6 +3,8 @@ from decimal import Decimal
 
 from pydantic import BaseModel, Field
 
+from app.core.enums import PaymentProviderType
+
 
 class TariffInboundLinkCreate(BaseModel):
     server_id: int
@@ -12,6 +14,19 @@ class TariffInboundLinkCreate(BaseModel):
 
 
 class TariffInboundLinkRead(TariffInboundLinkCreate):
+    id: int
+
+    model_config = {"from_attributes": True}
+
+
+class TariffPriceCreate(BaseModel):
+    payment_method: PaymentProviderType
+    amount: Decimal = Field(ge=0)
+    currency: str = Field(default="RUB", min_length=3, max_length=16)
+    enabled: bool = True
+
+
+class TariffPriceRead(TariffPriceCreate):
     id: int
 
     model_config = {"from_attributes": True}
@@ -30,6 +45,7 @@ class TariffCreate(BaseModel):
     is_visible: bool = True
     sort_order: int = 0
     inbound_links: list[TariffInboundLinkCreate] = Field(default_factory=list)
+    prices: list[TariffPriceCreate] = Field(default_factory=list)
 
 
 class TariffUpdate(BaseModel):
@@ -45,6 +61,7 @@ class TariffUpdate(BaseModel):
     is_visible: bool | None = None
     sort_order: int | None = None
     inbound_links: list[TariffInboundLinkCreate] | None = None
+    prices: list[TariffPriceCreate] | None = None
 
 
 class TariffRead(BaseModel):
@@ -61,6 +78,7 @@ class TariffRead(BaseModel):
     is_visible: bool
     sort_order: int
     inbound_links: list[TariffInboundLinkRead]
+    prices: list[TariffPriceRead]
     created_at: datetime
     updated_at: datetime
 

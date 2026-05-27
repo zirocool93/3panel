@@ -19,6 +19,23 @@ export type ClientSubscriptionRead = {
   created_at: string;
 };
 
+export type ClientTransactionRead = {
+  id: number;
+  user_id: number;
+  user_display_name: string | null;
+  admin_id: number | null;
+  subscription_id: number | null;
+  type: string;
+  payment_method: string | null;
+  amount: string;
+  currency: string;
+  balance_before: string;
+  balance_after: string;
+  description: string | null;
+  external_id: string | null;
+  created_at: string;
+};
+
 export type ClientRead = {
   id: number;
   display_name: string | null;
@@ -31,6 +48,7 @@ export type ClientRead = {
   is_blocked: boolean;
   subscriptions_count: number;
   subscriptions: ClientSubscriptionRead[];
+  transactions: ClientTransactionRead[];
   created_at: string;
   updated_at: string;
 };
@@ -54,6 +72,12 @@ export type ClientSubscriptionPayload = {
   traffic_limit_gb?: number;
   device_limit?: number;
   admin_comment?: string;
+};
+
+export type ClientBalanceAdjustPayload = {
+  amount: string;
+  currency: string;
+  description?: string;
 };
 
 export async function listClients(): Promise<ClientRead[]> {
@@ -82,5 +106,23 @@ export async function createClientSubscription(
     `/clients/${clientId}/subscriptions`,
     payload,
   );
+  return response.data;
+}
+
+export async function adjustClientBalance(
+  clientId: number,
+  payload: ClientBalanceAdjustPayload,
+): Promise<ClientRead> {
+  const response = await api.post<ClientRead>(`/clients/${clientId}/balance`, payload);
+  return response.data;
+}
+
+export async function listClientTransactions(clientId: number): Promise<ClientTransactionRead[]> {
+  const response = await api.get<ClientTransactionRead[]>(`/clients/${clientId}/transactions`);
+  return response.data;
+}
+
+export async function listTransactions(): Promise<ClientTransactionRead[]> {
+  const response = await api.get<ClientTransactionRead[]>("/transactions");
   return response.data;
 }

@@ -3,7 +3,7 @@ from decimal import Decimal
 
 from pydantic import BaseModel, Field, model_validator
 
-from app.core.enums import SubscriptionStatus
+from app.core.enums import BalanceTransactionType, PaymentProviderType, SubscriptionStatus
 
 
 class ClientCreate(BaseModel):
@@ -34,6 +34,29 @@ class ClientSubscriptionCreate(BaseModel):
     traffic_limit_gb: int | None = Field(default=None, gt=0)
     device_limit: int | None = Field(default=None, gt=0)
     admin_comment: str | None = Field(default=None, max_length=500)
+
+
+class ClientBalanceAdjust(BaseModel):
+    amount: Decimal
+    currency: str = Field(default="RUB", min_length=3, max_length=16)
+    description: str | None = Field(default=None, max_length=1000)
+
+
+class ClientTransactionRead(BaseModel):
+    id: int
+    user_id: int
+    user_display_name: str | None = None
+    admin_id: int | None
+    subscription_id: int | None
+    type: BalanceTransactionType
+    payment_method: PaymentProviderType | None
+    amount: Decimal
+    currency: str
+    balance_before: Decimal
+    balance_after: Decimal
+    description: str | None
+    external_id: str | None
+    created_at: datetime
 
 
 class ClientSubscriptionRead(BaseModel):
@@ -67,6 +90,7 @@ class ClientRead(BaseModel):
     is_blocked: bool
     subscriptions_count: int = 0
     subscriptions: list[ClientSubscriptionRead] = Field(default_factory=list)
+    transactions: list[ClientTransactionRead] = Field(default_factory=list)
     created_at: datetime
     updated_at: datetime
 

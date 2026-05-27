@@ -8,6 +8,14 @@ export type TariffInboundLink = {
   protocol?: string | null;
 };
 
+export type TariffPrice = {
+  id?: number;
+  payment_method: string;
+  amount: string;
+  currency: string;
+  enabled: boolean;
+};
+
 export type TariffRead = {
   id: number;
   name: string;
@@ -22,6 +30,7 @@ export type TariffRead = {
   is_visible: boolean;
   sort_order: number;
   inbound_links: TariffInboundLink[];
+  prices: TariffPrice[];
   created_at: string;
   updated_at: string;
 };
@@ -39,6 +48,7 @@ export type TariffPayload = {
   is_visible: boolean;
   sort_order: number;
   inbound_links: TariffInboundLink[];
+  prices: TariffPrice[];
 };
 
 export async function listTariffs(): Promise<TariffRead[]> {

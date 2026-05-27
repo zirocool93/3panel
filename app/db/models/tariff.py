@@ -13,7 +13,7 @@ from sqlalchemy import (
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from app.core.enums import ServerGroupSelectionMode
+from app.core.enums import PaymentProviderType, ServerGroupSelectionMode
 from app.db.base import Base, TimestampMixin
 
 if TYPE_CHECKING:
@@ -44,6 +44,25 @@ class Tariff(Base, TimestampMixin):
     inbound_links: Mapped[list["TariffInbound"]] = relationship(
         back_populates="tariff", cascade="all, delete-orphan"
     )
+    prices: Mapped[list["TariffPrice"]] = relationship(
+        back_populates="tariff", cascade="all, delete-orphan"
+    )
+
+
+class TariffPrice(Base, TimestampMixin):
+    __tablename__ = "tariff_prices"
+    __table_args__ = (UniqueConstraint("tariff_id", "payment_method"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    tariff_id: Mapped[int] = mapped_column(ForeignKey("tariffs.id", ondelete="CASCADE"))
+    payment_method: Mapped[PaymentProviderType] = mapped_column(
+        Enum(PaymentProviderType, name="payment_provider_type", native_enum=False)
+    )
+    amount: Mapped[Decimal] = mapped_column(Numeric(14, 2))
+    currency: Mapped[str] = mapped_column(String(16))
+    enabled: Mapped[bool] = mapped_column(Boolean, default=True)
+
+    tariff: Mapped[Tariff] = relationship(back_populates="prices")
 
 
 class TariffGroup(Base, TimestampMixin):

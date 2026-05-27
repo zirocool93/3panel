@@ -1,4 +1,5 @@
 from datetime import UTC, datetime, timedelta
+from decimal import Decimal
 from secrets import token_urlsafe
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -7,16 +8,19 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.api.deps import get_current_admin, get_db
-from app.core.enums import SubscriptionStatus
+from app.core.enums import BalanceTransactionType, PaymentProviderType, SubscriptionStatus
 from app.db.models.admin import AdminUser
+from app.db.models.billing import BalanceTransaction
 from app.db.models.subscription import VpnSubscription
 from app.db.models.tariff import Tariff
 from app.db.models.user import User
 from app.schemas.clients import (
+    ClientBalanceAdjust,
     ClientCreate,
     ClientRead,
     ClientSubscriptionCreate,
     ClientSubscriptionRead,
+    ClientTransactionRead,
     ClientUpdate,
 )
 
@@ -29,7 +33,13 @@ async def list_clients(
     session: AsyncSession = Depends(get_db),
 ) -> list[ClientRead]:
     result = await session.execute(
-        select(User).options(selectinload(User.subscriptions)).order_by(User.id.desc())
+        select(User)
+        .options(
+            selectinload(User.subscriptions).selectinload(VpnSubscription.tariff),
+            selectinload(User.subscriptions).selectinload(VpnSubscription.nodes),
+            selectinload(User.balance_transactions),
+        )
+        .order_by(User.id.desc())
     )
     return [_client_read(user) for user in result.scalars()]
 
@@ -79,15 +89,17 @@ async def update_client(
 async def create_client_subscription(
     client_id: int,
     payload: ClientSubscriptionCreate,
-    _admin: AdminUser = Depends(get_current_admin),
+    admin: AdminUser = Depends(get_current_admin),
     session: AsyncSession = Depends(get_db),
 ) -> ClientSubscriptionRead:
     user = await _get_client(session, client_id)
     tariff = await session.get(Tariff, payload.tariff_id)
     if not tariff:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Тариф не найден.")
+    await session.refresh(tariff, ["prices"])
     duration_days = payload.duration_days or tariff.duration_days
     traffic_limit_gb = payload.traffic_limit_gb or tariff.traffic_limit_gb
+    price_amount, currency = _subscription_price(tariff, payload)
     now = datetime.now(UTC)
     subscription = VpnSubscription(
         user=user,
@@ -99,8 +111,8 @@ async def create_client_subscription(
         subscription_token=token_urlsafe(32),
         is_multi_server=False,
         payment_method=payload.payment_method,
-        price_amount=payload.price_amount if payload.price_amount is not None else tariff.price,
-        currency=(payload.currency or tariff.currency).upper(),
+        price_amount=price_amount,
+        currency=currency,
         duration_days=duration_days,
         device_limit=(
             payload.device_limit if payload.device_limit is not None else tariff.device_limit
@@ -108,13 +120,75 @@ async def create_client_subscription(
         admin_comment=payload.admin_comment,
     )
     session.add(subscription)
+    if payload.payment_method == PaymentProviderType.BALANCE:
+        _add_balance_transaction(
+            session=session,
+            user=user,
+            amount=-price_amount,
+            currency=currency,
+            transaction_type=BalanceTransactionType.SUBSCRIPTION_CHARGE,
+            payment_method=PaymentProviderType.BALANCE,
+            admin_id=admin.id,
+            subscription=subscription,
+            description=f"Списание за подписку: {tariff.name}",
+        )
     await session.commit()
     return _subscription_read(subscription)
 
 
+@router.post("/{client_id}/balance", response_model=ClientRead)
+async def adjust_client_balance(
+    client_id: int,
+    payload: ClientBalanceAdjust,
+    admin: AdminUser = Depends(get_current_admin),
+    session: AsyncSession = Depends(get_db),
+) -> ClientRead:
+    user = await _get_client(session, client_id)
+    if payload.amount == 0:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Сумма изменения баланса не может быть нулевой.",
+        )
+    _add_balance_transaction(
+        session=session,
+        user=user,
+        amount=payload.amount,
+        currency=payload.currency.upper(),
+        transaction_type=BalanceTransactionType.MANUAL_ADJUSTMENT,
+        payment_method=None,
+        admin_id=admin.id,
+        subscription=None,
+        description=payload.description,
+    )
+    await session.commit()
+    return _client_read(await _get_client(session, user.id))
+
+
+@router.get("/{client_id}/transactions", response_model=list[ClientTransactionRead])
+async def list_client_transactions(
+    client_id: int,
+    _admin: AdminUser = Depends(get_current_admin),
+    session: AsyncSession = Depends(get_db),
+) -> list[ClientTransactionRead]:
+    await _get_client(session, client_id)
+    result = await session.execute(
+        select(BalanceTransaction)
+        .options(selectinload(BalanceTransaction.user))
+        .where(BalanceTransaction.user_id == client_id)
+        .order_by(BalanceTransaction.id.desc())
+    )
+    return [_transaction_read(transaction) for transaction in result.scalars()]
+
+
 async def _get_client(session: AsyncSession, client_id: int) -> User:
     result = await session.execute(
-        select(User).options(selectinload(User.subscriptions)).where(User.id == client_id)
+        select(User)
+        .options(
+            selectinload(User.subscriptions).selectinload(VpnSubscription.tariff),
+            selectinload(User.subscriptions).selectinload(VpnSubscription.nodes),
+            selectinload(User.balance_transactions),
+        )
+        .where(User.id == client_id)
     )
     user = result.scalar_one_or_none()
     if not user:
@@ -138,6 +212,10 @@ async def _ensure_telegram_id_free(
 
 def _client_read(user: User) -> ClientRead:
     subscriptions = [_subscription_read(subscription) for subscription in user.subscriptions]
+    transactions = [
+        _transaction_read(transaction)
+        for transaction in sorted(user.balance_transactions, key=lambda item: item.id, reverse=True)
+    ]
     return ClientRead.model_validate(
         {
             "id": user.id,
@@ -151,6 +229,7 @@ def _client_read(user: User) -> ClientRead:
             "is_blocked": user.is_blocked,
             "subscriptions_count": len(subscriptions),
             "subscriptions": subscriptions,
+            "transactions": transactions,
             "created_at": user.created_at,
             "updated_at": user.updated_at,
         }
@@ -180,4 +259,87 @@ def _subscription_read(subscription: VpnSubscription) -> ClientSubscriptionRead:
         nodes_count=len(subscription.nodes),
         admin_comment=subscription.admin_comment,
         created_at=subscription.created_at,
+    )
+
+
+def _subscription_price(
+    tariff: Tariff, payload: ClientSubscriptionCreate
+) -> tuple[Decimal, str]:
+    if payload.price_amount is not None:
+        return payload.price_amount, (payload.currency or tariff.currency).upper()
+    try:
+        payment_method = PaymentProviderType(payload.payment_method)
+    except ValueError:
+        payment_method = PaymentProviderType.MANUAL
+    tariff_price = next(
+        (
+            price
+            for price in tariff.prices
+            if price.payment_method == payment_method and price.enabled
+        ),
+        None,
+    )
+    if tariff_price:
+        return tariff_price.amount, tariff_price.currency.upper()
+    return tariff.price, tariff.currency.upper()
+
+
+def _add_balance_transaction(
+    *,
+    session: AsyncSession,
+    user: User,
+    amount: Decimal,
+    currency: str,
+    transaction_type: BalanceTransactionType,
+    payment_method: PaymentProviderType | None,
+    admin_id: int | None,
+    subscription: VpnSubscription | None,
+    description: str | None,
+) -> BalanceTransaction:
+    before = user.balance or Decimal("0.00")
+    after = before + amount
+    user.balance = after
+    transaction = BalanceTransaction(
+        user=user,
+        admin_id=admin_id,
+        subscription=subscription,
+        type=transaction_type,
+        payment_method=payment_method,
+        amount=amount,
+        currency=currency.upper(),
+        balance_before=before,
+        balance_after=after,
+        description=description,
+    )
+    session.add(transaction)
+    return transaction
+
+
+def transaction_read(transaction: BalanceTransaction) -> ClientTransactionRead:
+    return ClientTransactionRead(
+        id=transaction.id,
+        user_id=transaction.user_id,
+        user_display_name=_user_display_name(transaction.user),
+        admin_id=transaction.admin_id,
+        subscription_id=transaction.subscription_id,
+        type=transaction.type,
+        payment_method=transaction.payment_method,
+        amount=transaction.amount,
+        currency=transaction.currency,
+        balance_before=transaction.balance_before,
+        balance_after=transaction.balance_after,
+        description=transaction.description,
+        external_id=transaction.external_id,
+        created_at=transaction.created_at,
+    )
+
+
+_transaction_read = transaction_read
+
+
+def _user_display_name(user: User | None) -> str | None:
+    if not user:
+        return None
+    return user.display_name or user.username or " ".join(
+        part for part in [user.first_name, user.last_name] if part
     )

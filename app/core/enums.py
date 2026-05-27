@@ -15,9 +15,19 @@ class PanelProviderType(StrEnum):
 
 class PaymentProviderType(StrEnum):
     MANUAL = "manual"
+    BALANCE = "balance"
     TELEGRAM_STARS = "telegram_stars"
+    CRYPTO = "crypto"
     CARDLINK = "cardlink"
     YOOKASSA = "yookassa"
+
+
+class BalanceTransactionType(StrEnum):
+    MANUAL_ADJUSTMENT = "manual_adjustment"
+    PAYMENT = "payment"
+    SUBSCRIPTION_CHARGE = "subscription_charge"
+    REFUND = "refund"
+    BONUS = "bonus"
 
 
 class ServerHealthStatus(StrEnum):

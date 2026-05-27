@@ -37,7 +37,10 @@ type TariffForm = {
   name: string;
   description?: string;
   price: number;
+  price_stars?: number;
+  price_crypto?: number;
   currency: string;
+  crypto_currency?: string;
   duration_days: number;
   traffic_limit_gb?: number;
   device_limit?: number;
@@ -109,6 +112,7 @@ export function TariffsPage() {
         description: values.description || undefined,
         price: String(values.price),
         currency: values.currency || "RUB",
+        prices: buildTariffPrices(values),
         duration_days: values.duration_days,
         traffic_limit_gb: values.traffic_limit_gb,
         device_limit: values.device_limit,
@@ -141,7 +145,10 @@ export function TariffsPage() {
       name: tariff.name,
       description: tariff.description || undefined,
       price: Number(tariff.price),
+      price_stars: tariffPriceAmount(tariff, "telegram_stars"),
+      price_crypto: tariffPriceAmount(tariff, "crypto"),
       currency: tariff.currency,
+      crypto_currency: tariffPriceCurrency(tariff, "crypto") || "USDT",
       duration_days: tariff.duration_days,
       traffic_limit_gb: tariff.traffic_limit_gb || undefined,
       device_limit: tariff.device_limit || undefined,
@@ -186,8 +193,19 @@ export function TariffsPage() {
     },
     {
       title: ru.tariffs.columns.price,
-      width: 130,
-      render: (_, tariff) => `${tariff.price} ${tariff.currency}`,
+      width: 220,
+      render: (_, tariff) => (
+        <Space direction="vertical" size={0}>
+          <Typography.Text>{`${tariff.price} ${tariff.currency}`}</Typography.Text>
+          {tariff.prices
+            .filter((price) => price.enabled && price.payment_method !== "manual")
+            .map((price) => (
+              <Typography.Text key={price.payment_method} type="secondary">
+                {paymentMethodLabel(price.payment_method)}: {price.amount} {price.currency}
+              </Typography.Text>
+            ))}
+        </Space>
+      ),
     },
     {
       title: ru.tariffs.columns.duration,
@@ -286,7 +304,7 @@ export function TariffsPage() {
             <Input />
           </Form.Item>
           <Form.Item
-            label={ru.tariffs.form.price}
+            label={ru.tariffs.form.priceRub}
             name="price"
             rules={[{ required: true, message: ru.tariffs.form.required }]}
           >
@@ -298,6 +316,15 @@ export function TariffsPage() {
             rules={[{ required: true, message: ru.tariffs.form.required }]}
           >
             <Input maxLength={3} />
+          </Form.Item>
+          <Form.Item label={ru.tariffs.form.priceStars} name="price_stars">
+            <InputNumber min={0} precision={0} />
+          </Form.Item>
+          <Form.Item label={ru.tariffs.form.priceCrypto} name="price_crypto">
+            <InputNumber min={0} precision={2} />
+          </Form.Item>
+          <Form.Item label={ru.tariffs.form.cryptoCurrency} name="crypto_currency">
+            <Input maxLength={16} />
           </Form.Item>
           <Form.Item
             label={ru.tariffs.form.durationDays}
@@ -368,6 +395,7 @@ export function TariffsPage() {
 
 const defaultFormValues: Partial<TariffForm> = {
   currency: "RUB",
+  crypto_currency: "USDT",
   duration_days: 30,
   inbound_keys: [],
   sort_order: 0,
@@ -388,6 +416,72 @@ function inboundToOption(server: ServerRead, inbound: ServerInboundRead): Inboun
     label: `${server.name} / ${inbound.remark || `#${inbound.id}`} (${inbound.protocol || "?"})`,
     link,
   };
+}
+
+function buildTariffPrices(values: TariffForm) {
+  const prices = [
+    {
+      payment_method: "manual",
+      amount: String(values.price),
+      currency: values.currency || "RUB",
+      enabled: true,
+    },
+    {
+      payment_method: "balance",
+      amount: String(values.price),
+      currency: values.currency || "RUB",
+      enabled: true,
+    },
+    {
+      payment_method: "cardlink",
+      amount: String(values.price),
+      currency: values.currency || "RUB",
+      enabled: true,
+    },
+    {
+      payment_method: "yookassa",
+      amount: String(values.price),
+      currency: values.currency || "RUB",
+      enabled: true,
+    },
+  ];
+  if (values.price_stars !== undefined) {
+    prices.push({
+      payment_method: "telegram_stars",
+      amount: String(values.price_stars),
+      currency: "XTR",
+      enabled: true,
+    });
+  }
+  if (values.price_crypto !== undefined) {
+    prices.push({
+      payment_method: "crypto",
+      amount: String(values.price_crypto),
+      currency: values.crypto_currency || "USDT",
+      enabled: true,
+    });
+  }
+  return prices;
+}
+
+function tariffPriceAmount(tariff: TariffRead, paymentMethod: string): number | undefined {
+  const price = tariff.prices.find((item) => item.payment_method === paymentMethod);
+  return price ? Number(price.amount) : undefined;
+}
+
+function tariffPriceCurrency(tariff: TariffRead, paymentMethod: string): string | undefined {
+  return tariff.prices.find((item) => item.payment_method === paymentMethod)?.currency;
+}
+
+function paymentMethodLabel(paymentMethod: string): string {
+  const labels: Record<string, string> = {
+    balance: "Баланс",
+    cardlink: "Cardlink",
+    yookassa: "ЮKassa",
+    telegram_stars: "Stars",
+    crypto: "Крипта",
+  };
+  return labels[paymentMethod] || paymentMethod;
 }
 
 function inboundKey(link: Pick<TariffInboundLink, "server_id" | "inbound_id">): string {

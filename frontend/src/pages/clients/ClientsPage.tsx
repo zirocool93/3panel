@@ -18,6 +18,7 @@ import axios from "axios";
 import { useEffect, useState } from "react";
 
 import {
+  adjustClientBalance,
   createClient,
   createClientSubscription,
   listClients,
@@ -26,6 +27,7 @@ import {
   type ClientRead,
   type ClientSubscriptionPayload,
   type ClientSubscriptionRead,
+  type ClientTransactionRead,
 } from "../../api/clients";
 import { listPaymentMethods, type PaymentMethodRead } from "../../api/payments";
 import { listTariffs, type TariffRead } from "../../api/tariffs";
@@ -53,9 +55,17 @@ type SubscriptionForm = {
   admin_comment?: string;
 };
 
+type BalanceForm = {
+  client_id: number;
+  amount: number;
+  currency: string;
+  description?: string;
+};
+
 export function ClientsPage() {
   const [clientForm] = Form.useForm<ClientForm>();
   const [subscriptionForm] = Form.useForm<SubscriptionForm>();
+  const [balanceForm] = Form.useForm<BalanceForm>();
   const [clients, setClients] = useState<ClientRead[]>([]);
   const [paymentMethods, setPaymentMethods] = useState<PaymentMethodRead[]>([]);
   const [tariffs, setTariffs] = useState<TariffRead[]>([]);
@@ -63,6 +73,7 @@ export function ClientsPage() {
   const [loading, setLoading] = useState(false);
   const [savingClient, setSavingClient] = useState(false);
   const [savingSubscription, setSavingSubscription] = useState(false);
+  const [savingBalance, setSavingBalance] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [messageApi, messageContext] = message.useMessage();
 
@@ -141,6 +152,26 @@ export function ClientsPage() {
     }
   }
 
+  async function submitBalance(values: BalanceForm) {
+    setSavingBalance(true);
+    try {
+      await adjustClientBalance(values.client_id, {
+        amount: String(values.amount),
+        currency: values.currency || "RUB",
+        description: values.description || undefined,
+      });
+      balanceForm.resetFields();
+      balanceForm.setFieldsValue({ currency: "RUB" });
+      messageApi.success("Баланс изменён.");
+      await refreshClients();
+    } catch (caughtError) {
+      const detail = axios.isAxiosError(caughtError) ? caughtError.response?.data?.detail : null;
+      messageApi.error(detail || "Не удалось изменить баланс.");
+    } finally {
+      setSavingBalance(false);
+    }
+  }
+
   function startEdit(client: ClientRead) {
     setEditingClient(client);
     clientForm.setFieldsValue({
@@ -164,10 +195,11 @@ export function ClientsPage() {
   useEffect(() => {
     clientForm.setFieldsValue({ is_blocked: false });
     subscriptionForm.setFieldsValue({ payment_method: "manual" });
+    balanceForm.setFieldsValue({ currency: "RUB" });
     void refreshClients();
     void refreshTariffs();
     void refreshPaymentMethods();
-  }, [clientForm, subscriptionForm]);
+  }, [balanceForm, clientForm, subscriptionForm]);
 
   const columns: TableColumnsType<ClientRead> = [
     {
@@ -270,6 +302,49 @@ export function ClientsPage() {
       </section>
 
       <section className="settings-section">
+        <Typography.Title level={4}>Изменить баланс</Typography.Title>
+        <Alert className="page-alert" message="Для списания укажите отрицательную сумму." showIcon type="info" />
+        <Form<BalanceForm>
+          className="xui-form"
+          form={balanceForm}
+          layout="vertical"
+          onFinish={submitBalance}
+          requiredMark={false}
+        >
+          <Form.Item
+            label="Клиент"
+            name="client_id"
+            rules={[{ required: true, message: ru.clients.form.required }]}
+          >
+            <Select
+              options={clients.map((client) => ({
+                label: client.display_name || client.username || `#${client.id}`,
+                value: client.id,
+              }))}
+            />
+          </Form.Item>
+          <Form.Item
+            label="Сумма"
+            name="amount"
+            rules={[{ required: true, message: ru.clients.form.required }]}
+          >
+            <InputNumber precision={2} />
+          </Form.Item>
+          <Form.Item label="Валюта" name="currency">
+            <Input maxLength={16} />
+          </Form.Item>
+          <Form.Item className="grid-wide" label="Комментарий" name="description">
+            <Input.TextArea rows={2} />
+          </Form.Item>
+          <Form.Item className="form-actions">
+            <Button htmlType="submit" loading={savingBalance} type="primary">
+              Сохранить операцию
+            </Button>
+          </Form.Item>
+        </Form>
+      </section>
+
+      <section className="settings-section">
         <Typography.Title level={4}>
           <PlusOutlined /> {ru.clients.subscription}
         </Typography.Title>
@@ -341,7 +416,7 @@ export function ClientsPage() {
         <Table
           columns={columns}
           dataSource={clients}
-          expandable={{ expandedRowRender: renderSubscriptions }}
+          expandable={{ expandedRowRender: renderClientDetails }}
           loading={loading}
           locale={{ emptyText: ru.clients.empty }}
           pagination={{ pageSize: 10 }}
@@ -350,6 +425,15 @@ export function ClientsPage() {
         />
       </section>
     </section>
+  );
+}
+
+function renderClientDetails(client: ClientRead) {
+  return (
+    <Space className="grid-wide" direction="vertical" size="large">
+      {renderSubscriptions(client)}
+      {renderTransactions(client)}
+    </Space>
   );
 }
 
@@ -378,6 +462,30 @@ function renderSubscriptions(client: ClientRead) {
     { title: ru.clients.columns.nodes, dataIndex: "nodes_count" },
   ];
   return <Table columns={columns} dataSource={client.subscriptions} pagination={false} rowKey="id" />;
+}
+
+function renderTransactions(client: ClientRead) {
+  if (!client.transactions.length) {
+    return null;
+  }
+  const columns: TableColumnsType<ClientTransactionRead> = [
+    { title: "Тип", dataIndex: "type" },
+    { title: "Оплата", dataIndex: "payment_method" },
+    {
+      title: "Сумма",
+      render: (_, transaction) => `${transaction.amount} ${transaction.currency}`,
+    },
+    { title: "До", dataIndex: "balance_before" },
+    { title: "После", dataIndex: "balance_after" },
+    { title: "Комментарий", dataIndex: "description" },
+    { title: "Дата", render: (_, transaction) => formatDate(transaction.created_at) },
+  ];
+  return (
+    <section>
+      <Typography.Title level={5}>История оплат и списаний</Typography.Title>
+      <Table columns={columns} dataSource={client.transactions} pagination={false} rowKey="id" />
+    </section>
+  );
 }
 
 function formatDate(value: string | null): string {
