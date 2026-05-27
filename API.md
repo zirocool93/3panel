@@ -16,6 +16,9 @@ FastAPI публикует OpenAPI на `/docs`.
 | `PATCH` | `/api/servers/{server_id}` | редактирование 3X-UI сервера |
 | `POST` | `/api/servers/{server_id}/check` | проверка подключения к 3X-UI |
 | `GET` | `/api/servers/{server_id}/inbounds` | список inbound на 3X-UI сервере |
+| `GET` | `/api/tariffs` | список тарифов |
+| `POST` | `/api/tariffs` | создание тарифа |
+| `PATCH` | `/api/tariffs/{tariff_id}` | редактирование тарифа |
 | `GET` | `/api/system/updates` | статус self-update для owner |
 | `POST` | `/api/system/updates` | запуск self-update для owner |
 

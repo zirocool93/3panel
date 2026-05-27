@@ -2,6 +2,7 @@ import {
   CloudServerOutlined,
   DashboardOutlined,
   LogoutOutlined,
+  TagsOutlined,
   SyncOutlined,
   TeamOutlined,
 } from "@ant-design/icons";
@@ -18,6 +19,8 @@ export function AdminLayout() {
   const location = useLocation();
   const selectedKey = location.pathname.startsWith("/settings/xui")
     ? "xui-settings"
+    : location.pathname.startsWith("/tariffs")
+      ? "tariffs"
     : location.pathname.startsWith("/xui-clients")
       ? "xui-clients"
     : location.pathname.startsWith("/system/updates")
@@ -40,6 +43,12 @@ export function AdminLayout() {
               icon: <DashboardOutlined />,
               label: ru.navigation.dashboard,
               onClick: () => navigate("/"),
+            },
+            {
+              key: "tariffs",
+              icon: <TagsOutlined />,
+              label: ru.navigation.tariffs,
+              onClick: () => navigate("/tariffs"),
             },
             {
               key: "xui-settings",

@@ -6,6 +6,7 @@ import { DashboardPage } from "../pages/dashboard/DashboardPage";
 import { LoginPage } from "../pages/login/LoginPage";
 import { XuiSettingsPage } from "../pages/settings/XuiSettingsPage";
 import { UpdatesPage } from "../pages/system/UpdatesPage";
+import { TariffsPage } from "../pages/tariffs/TariffsPage";
 import { XuiClientsPage } from "../pages/xui-clients/XuiClientsPage";
 
 function ProtectedRoute() {
@@ -30,6 +31,10 @@ export const router = createBrowserRouter([
           {
             path: "/system/updates",
             element: <UpdatesPage />,
+          },
+          {
+            path: "/tariffs",
+            element: <TariffsPage />,
           },
           {
             path: "/settings/xui",

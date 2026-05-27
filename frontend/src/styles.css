@@ -142,6 +142,10 @@ body {
   width: 100%;
 }
 
+.grid-wide {
+  grid-column: 1 / -1;
+}
+
 .form-actions {
   align-self: end;
 }

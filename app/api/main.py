@@ -4,6 +4,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.api.routers.auth import router as auth_router
 from app.api.routers.servers import router as servers_router
 from app.api.routers.system import router as system_router
+from app.api.routers.tariffs import router as tariffs_router
 from app.core.config import get_settings
 from app.core.logging import configure_logging
 
@@ -22,6 +23,7 @@ def create_app() -> FastAPI:
     app.include_router(auth_router, prefix=settings.api_v1_prefix)
     app.include_router(servers_router, prefix=settings.api_v1_prefix)
     app.include_router(system_router, prefix=settings.api_v1_prefix)
+    app.include_router(tariffs_router, prefix=settings.api_v1_prefix)
 
     @app.get("/health", tags=["system"])
     async def health() -> dict[str, str]:

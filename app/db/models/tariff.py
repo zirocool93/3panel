@@ -17,6 +17,7 @@ from app.core.enums import ServerGroupSelectionMode
 from app.db.base import Base, TimestampMixin
 
 if TYPE_CHECKING:
+    from app.db.models.server import Server
     from app.db.models.subscription import VpnSubscription
 
 
@@ -33,10 +34,14 @@ class Tariff(Base, TimestampMixin):
     currency: Mapped[str] = mapped_column(String(3))
     is_trial: Mapped[bool] = mapped_column(Boolean, default=False)
     enabled: Mapped[bool] = mapped_column(Boolean, default=True)
+    is_visible: Mapped[bool] = mapped_column(Boolean, default=True)
     sort_order: Mapped[int] = mapped_column(Integer, default=0)
 
     subscriptions: Mapped[list["VpnSubscription"]] = relationship(back_populates="tariff")
     server_group_links: Mapped[list["TariffServerGroup"]] = relationship(
+        back_populates="tariff", cascade="all, delete-orphan"
+    )
+    inbound_links: Mapped[list["TariffInbound"]] = relationship(
         back_populates="tariff", cascade="all, delete-orphan"
     )
 
@@ -78,3 +83,18 @@ class TariffServerGroup(Base):
     )
 
     tariff: Mapped[Tariff] = relationship(back_populates="server_group_links")
+
+
+class TariffInbound(Base):
+    __tablename__ = "tariff_inbounds"
+    __table_args__ = (UniqueConstraint("tariff_id", "server_id", "inbound_id"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    tariff_id: Mapped[int] = mapped_column(ForeignKey("tariffs.id", ondelete="CASCADE"))
+    server_id: Mapped[int] = mapped_column(ForeignKey("servers.id", ondelete="CASCADE"))
+    inbound_id: Mapped[str] = mapped_column(String(128))
+    inbound_remark: Mapped[str | None] = mapped_column(String(255))
+    protocol: Mapped[str | None] = mapped_column(String(64))
+
+    tariff: Mapped[Tariff] = relationship(back_populates="inbound_links")
+    server: Mapped["Server"] = relationship()

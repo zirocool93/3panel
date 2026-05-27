@@ -1,0 +1,124 @@
+from fastapi import APIRouter, Depends, HTTPException, status
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
+
+from app.api.deps import get_current_admin, get_db
+from app.db.models.admin import AdminUser
+from app.db.models.server import Server
+from app.db.models.tariff import Tariff, TariffInbound
+from app.schemas.tariffs import TariffCreate, TariffRead, TariffUpdate
+
+router = APIRouter(prefix="/tariffs", tags=["tariffs"])
+
+
+@router.get("", response_model=list[TariffRead])
+async def list_tariffs(
+    _admin: AdminUser = Depends(get_current_admin),
+    session: AsyncSession = Depends(get_db),
+) -> list[Tariff]:
+    result = await session.execute(
+        select(Tariff)
+        .options(selectinload(Tariff.inbound_links))
+        .order_by(Tariff.sort_order, Tariff.id)
+    )
+    return list(result.scalars())
+
+
+@router.post("", response_model=TariffRead, status_code=status.HTTP_201_CREATED)
+async def create_tariff(
+    payload: TariffCreate,
+    _admin: AdminUser = Depends(get_current_admin),
+    session: AsyncSession = Depends(get_db),
+) -> Tariff:
+    await _validate_servers(session, [link.server_id for link in payload.inbound_links])
+    tariff = Tariff(
+        name=payload.name,
+        description=payload.description,
+        duration_days=payload.duration_days,
+        traffic_limit_gb=payload.traffic_limit_gb,
+        device_limit=payload.device_limit,
+        price=payload.price,
+        currency=payload.currency.upper(),
+        is_trial=payload.is_trial,
+        enabled=payload.enabled,
+        is_visible=payload.is_visible,
+        sort_order=payload.sort_order,
+        inbound_links=[
+            TariffInbound(
+                server_id=link.server_id,
+                inbound_id=link.inbound_id,
+                inbound_remark=link.inbound_remark,
+                protocol=link.protocol,
+            )
+            for link in payload.inbound_links
+        ],
+    )
+    session.add(tariff)
+    await session.commit()
+    return await _get_tariff(session, tariff.id)
+
+
+@router.patch("/{tariff_id}", response_model=TariffRead)
+async def update_tariff(
+    tariff_id: int,
+    payload: TariffUpdate,
+    _admin: AdminUser = Depends(get_current_admin),
+    session: AsyncSession = Depends(get_db),
+) -> Tariff:
+    tariff = await _get_tariff(session, tariff_id)
+    data = payload.model_dump(exclude_unset=True)
+    for field in (
+        "name",
+        "description",
+        "duration_days",
+        "traffic_limit_gb",
+        "device_limit",
+        "price",
+        "currency",
+        "is_trial",
+        "enabled",
+        "is_visible",
+        "sort_order",
+    ):
+        if field in data:
+            setattr(tariff, field, data[field].upper() if field == "currency" else data[field])
+    if payload.inbound_links is not None:
+        await _validate_servers(session, [link.server_id for link in payload.inbound_links])
+        tariff.inbound_links = [
+            TariffInbound(
+                server_id=link.server_id,
+                inbound_id=link.inbound_id,
+                inbound_remark=link.inbound_remark,
+                protocol=link.protocol,
+            )
+            for link in payload.inbound_links
+        ]
+    await session.commit()
+    return await _get_tariff(session, tariff.id)
+
+
+async def _get_tariff(session: AsyncSession, tariff_id: int) -> Tariff:
+    result = await session.execute(
+        select(Tariff)
+        .options(selectinload(Tariff.inbound_links))
+        .where(Tariff.id == tariff_id)
+    )
+    tariff = result.scalar_one_or_none()
+    if not tariff:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Тариф не найден.")
+    return tariff
+
+
+async def _validate_servers(session: AsyncSession, server_ids: list[int]) -> None:
+    unique_ids = set(server_ids)
+    if not unique_ids:
+        return
+    result = await session.execute(select(Server.id).where(Server.id.in_(unique_ids)))
+    found_ids = set(result.scalars())
+    missing_ids = unique_ids - found_ids
+    if missing_ids:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Не найдены серверы: {', '.join(str(value) for value in sorted(missing_ids))}.",
+        )
