@@ -12,6 +12,7 @@ license = { text = "MIT" }
 authors = [{ name = "VPNBotX contributors" }]
 dependencies = [
   "aiogram>=3.20,<4",
+  "aiohttp-socks>=0.10,<1",
   "alembic>=1.16,<2",
   "argon2-cffi>=25.1,<26",
   "asyncpg>=0.30,<1",

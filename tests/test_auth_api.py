@@ -1,8 +1,9 @@
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
-from app.api.deps import get_db
+from app.api.deps import get_db, settings_dep
 from app.api.main import app
+from app.core.config import Settings
 from app.core.enums import AdminRole
 from app.core.security import hash_password
 from app.db.base import Base
@@ -31,6 +32,9 @@ async def test_admin_login_and_profile() -> None:
             yield session
 
     app.dependency_overrides[get_db] = override_get_db
+    app.dependency_overrides[settings_dep] = lambda: Settings(
+        credentials_encryption_key="1eU1yI-x0dUaLYprksH70z9RiPz8AwYI2sf2QSwRJH4="
+    )
     try:
         transport = ASGITransport(app=app)
         async with AsyncClient(transport=transport, base_url="http://test") as client:
@@ -60,6 +64,35 @@ async def test_admin_login_and_profile() -> None:
                 headers={"Authorization": f"Bearer {access_token}"},
             )
             assert update_start_response.status_code == 409
+
+            settings_response = await client.get(
+                "/api/system/telegram-settings",
+                headers={"Authorization": f"Bearer {access_token}"},
+            )
+            assert settings_response.status_code == 200
+            assert settings_response.json()["admin_email"] == "owner@example.com"
+
+            save_settings_response = await client.put(
+                "/api/system/telegram-settings",
+                headers={"Authorization": f"Bearer {access_token}"},
+                json={
+                    "bot_username": "my_vpn_bot",
+                    "bot_token": "123456:secret",
+                    "admin_telegram_id": "123456789",
+                    "socks5_enabled": True,
+                    "socks5_host": "127.0.0.1",
+                    "socks5_port": 1080,
+                    "socks5_username": "proxy-user",
+                    "socks5_password": "proxy-password",
+                    "admin_email": "owner@example.com",
+                },
+            )
+            assert save_settings_response.status_code == 200
+            saved_settings = save_settings_response.json()
+            assert saved_settings["bot_username"] == "my_vpn_bot"
+            assert saved_settings["bot_token_set"] is True
+            assert saved_settings["socks5_enabled"] is True
+            assert saved_settings["socks5_username_set"] is True
 
             refresh_response = await client.post(
                 "/api/auth/refresh",

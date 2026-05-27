@@ -2,6 +2,7 @@ import {
   CloudServerOutlined,
   DashboardOutlined,
   LogoutOutlined,
+  RobotOutlined,
   TagsOutlined,
   SyncOutlined,
   TeamOutlined,
@@ -19,6 +20,8 @@ export function AdminLayout() {
   const location = useLocation();
   const selectedKey = location.pathname.startsWith("/settings/xui")
     ? "xui-settings"
+    : location.pathname.startsWith("/settings/telegram")
+      ? "telegram-settings"
     : location.pathname.startsWith("/tariffs")
       ? "tariffs"
     : location.pathname.startsWith("/xui-clients")
@@ -55,6 +58,12 @@ export function AdminLayout() {
               icon: <CloudServerOutlined />,
               label: ru.navigation.xuiSettings,
               onClick: () => navigate("/settings/xui"),
+            },
+            {
+              key: "telegram-settings",
+              icon: <RobotOutlined />,
+              label: ru.navigation.telegramSettings,
+              onClick: () => navigate("/settings/telegram"),
             },
             {
               key: "xui-clients",

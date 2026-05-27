@@ -4,6 +4,7 @@ import { AdminLayout } from "../components/AdminLayout";
 import { authStore } from "../store/auth";
 import { DashboardPage } from "../pages/dashboard/DashboardPage";
 import { LoginPage } from "../pages/login/LoginPage";
+import { TelegramSettingsPage } from "../pages/settings/TelegramSettingsPage";
 import { XuiSettingsPage } from "../pages/settings/XuiSettingsPage";
 import { UpdatesPage } from "../pages/system/UpdatesPage";
 import { TariffsPage } from "../pages/tariffs/TariffsPage";
@@ -39,6 +40,10 @@ export const router = createBrowserRouter([
           {
             path: "/settings/xui",
             element: <XuiSettingsPage />,
+          },
+          {
+            path: "/settings/telegram",
+            element: <TelegramSettingsPage />,
           },
           {
             path: "/xui-clients",
