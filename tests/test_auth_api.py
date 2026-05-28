@@ -66,7 +66,7 @@ async def test_admin_login_and_profile(monkeypatch) -> None:
             created_xui_payloads.append({"inbound_ids": normalized_inbound_ids, **payload})
             return PanelClientRef(
                 external_id=f"{normalized_inbound_ids[0]}:{payload['id']}:{payload['email']}",
-                subscription_url=f"https://xui.example/sub/{payload['email']}",
+                subscription_url=f"https://sub.example/s/{payload['subId']}",
             )
 
         async def update_client(self, *, client_id: str, payload: dict[str, object]) -> None:
@@ -383,7 +383,7 @@ async def test_admin_login_and_profile(monkeypatch) -> None:
             assert provision_subscription_response.status_code == 200
             provision_subscription = provision_subscription_response.json()
             assert provision_subscription["nodes_count"] == 2
-            assert provision_subscription["subscription_url"].startswith("https://xui.example/sub/")
+            assert provision_subscription["subscription_url"].startswith("https://sub.example/s/")
             provision_payload = next(
                 item for item in created_xui_payloads if item["inbound_ids"] == ["101", "102"]
             )

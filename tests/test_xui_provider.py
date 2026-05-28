@@ -87,6 +87,16 @@ async def test_xui_provider_preserves_web_base_path() -> None:
             return httpx.Response(200, json={"success": True, "obj": {"id": 8}})
         if request.url.path == "/randompath/panel/api/clients/add":
             return httpx.Response(200, json={"success": True})
+        if request.url.path == "/randompath/panel/api/clients/get/user-1":
+            return httpx.Response(
+                200,
+                json={"success": True, "obj": {"client": {"email": "user-1", "subId": "sub-1"}}},
+            )
+        if request.url.path == "/randompath/panel/setting/defaultSettings":
+            return httpx.Response(
+                200,
+                json={"success": True, "obj": {"subURI": "https://sub.example/s/"}},
+            )
         return httpx.Response(404)
 
     async with httpx.AsyncClient(
@@ -109,8 +119,10 @@ async def test_xui_provider_preserves_web_base_path() -> None:
         "GET /randompath/panel/api/inbounds/get/7",
         "GET /randompath/panel/api/inbounds/get/8",
         "POST /randompath/panel/api/clients/add",
+        "GET /randompath/panel/api/clients/get/user-1",
+        "POST /randompath/panel/setting/defaultSettings",
     ]
-    assert ref.subscription_url == "https://xui.example/randompath/sub/user-1"
+    assert ref.subscription_url == "https://sub.example/s/sub-1"
 
 
 @pytest.mark.asyncio
@@ -129,6 +141,16 @@ async def test_xui_provider_create_client_returns_external_ref() -> None:
         if request.url.path == "/panel/api/clients/add":
             bodies.append(json.loads(request.content.decode()))
             return httpx.Response(200, json={"success": True})
+        if request.url.path == "/panel/api/clients/get/user-1":
+            return httpx.Response(
+                200,
+                json={"success": True, "obj": {"client": {"email": "user-1", "subId": "sub-1"}}},
+            )
+        if request.url.path == "/panel/setting/defaultSettings":
+            return httpx.Response(
+                200,
+                json={"success": True, "obj": {"subURI": "https://sub.example/sub"}},
+            )
         return httpx.Response(404)
 
     async with httpx.AsyncClient(
@@ -149,7 +171,7 @@ async def test_xui_provider_create_client_returns_external_ref() -> None:
         )
 
     assert ref.external_id == "7:uuid-1:user-1"
-    assert ref.subscription_url == "https://xui.example/sub/user-1"
+    assert ref.subscription_url == "https://sub.example/sub/sub-1"
     assert bodies[0]["inboundIds"] == [7, 8]
     assert isinstance(bodies[0]["client"], dict)
     assert bodies[0]["client"]["email"] == "user-1"
@@ -189,6 +211,7 @@ async def test_xui_provider_falls_back_to_legacy_add_client_path() -> None:
         "POST /panel/api/clients/add",
         "POST /panel/api/inbounds/addClient",
         "POST /panel/inbound/addClient",
+        "GET /panel/api/clients/get/user-1",
     ]
 
 
