@@ -390,7 +390,7 @@ async def test_admin_login_and_profile(monkeypatch) -> None:
             assert provision_payload["email"].startswith("manualclient-")
             assert provision_payload["tgId"] == 0
             assert provision_payload["reset"] == 0
-            assert provision_payload.get("flow") is None
+            assert provision_payload["flow"] == "xtls-rprx-vision"
             assert provision_payload.get("auth") is None
             node_emails = {node["email"] for node in provision_subscription["nodes"]}
             assert len(node_emails) == 1

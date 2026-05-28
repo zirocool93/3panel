@@ -679,7 +679,7 @@ async def _create_xui_nodes_for_server(
         client_uuid=client_uuid,
         email=email,
         sub_id=sub_id,
-        protocol=None,
+        protocol=_primary_client_protocol(links),
         subscription=subscription,
     )
     nodes: list[VpnSubscriptionNode] = []
@@ -779,6 +779,15 @@ def _xui_node_payload_for_protocol(
         node_payload["auth"] = auth
         node_payload["password"] = auth
     return node_payload
+
+
+def _primary_client_protocol(links: list[TariffInbound]) -> str | None:
+    protocols = {(link.protocol or "").lower() for link in links}
+    if "vless" in protocols:
+        return "vless"
+    if any("hysteria" in protocol for protocol in protocols):
+        return "hysteria"
+    return None
 
 
 def _xui_update_payload(
