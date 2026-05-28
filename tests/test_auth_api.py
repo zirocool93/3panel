@@ -56,11 +56,16 @@ async def test_admin_login_and_profile(monkeypatch) -> None:
             return None
 
         async def create_client(
-            self, *, inbound_id: str, payload: dict[str, object]
+            self,
+            *,
+            inbound_id: str | None = None,
+            inbound_ids: list[str] | None = None,
+            payload: dict[str, object],
         ) -> PanelClientRef:
-            created_xui_payloads.append({"inbound_id": inbound_id, **payload})
+            normalized_inbound_ids = inbound_ids or ([inbound_id] if inbound_id else [])
+            created_xui_payloads.append({"inbound_ids": normalized_inbound_ids, **payload})
             return PanelClientRef(
-                external_id=f"{inbound_id}:{payload['id']}:{payload['email']}",
+                external_id=f"{normalized_inbound_ids[0]}:{payload['id']}:{payload['email']}",
                 subscription_url=f"https://xui.example/sub/{payload['email']}",
             )
 
@@ -379,17 +384,16 @@ async def test_admin_login_and_profile(monkeypatch) -> None:
             provision_subscription = provision_subscription_response.json()
             assert provision_subscription["nodes_count"] == 2
             assert provision_subscription["subscription_url"].startswith("https://xui.example/sub/")
-            vless_payload = next(
-                item for item in created_xui_payloads if item["inbound_id"] == "101"
+            provision_payload = next(
+                item for item in created_xui_payloads if item["inbound_ids"] == ["101", "102"]
             )
-            hysteria_payload = next(
-                item for item in created_xui_payloads if item["inbound_id"] == "102"
-            )
-            assert vless_payload["flow"] == "xtls-rprx-vision"
-            assert vless_payload["tgId"] == 0
-            assert vless_payload["reset"] == 0
-            assert hysteria_payload["auth"]
-            assert hysteria_payload["password"] == hysteria_payload["auth"]
+            assert provision_payload["email"].startswith("manualclient-")
+            assert provision_payload["tgId"] == 0
+            assert provision_payload["reset"] == 0
+            assert provision_payload.get("flow") is None
+            assert provision_payload.get("auth") is None
+            node_emails = {node["email"] for node in provision_subscription["nodes"]}
+            assert len(node_emails) == 1
 
             diagnostics_response = await client.get(
                 "/api/system/diagnostics",

@@ -94,32 +94,46 @@ class XuiProvider:
         return clients
 
     async def create_client(
-        self, *, inbound_id: str, payload: dict[str, object]
+        self,
+        *,
+        inbound_id: str | None = None,
+        inbound_ids: list[str] | None = None,
+        payload: dict[str, object],
     ) -> PanelClientRef:
-        await self.ensure_inbound_exists(inbound_id=inbound_id)
+        normalized_inbound_ids = _normalize_inbound_ids(
+            inbound_id=inbound_id,
+            inbound_ids=inbound_ids,
+        )
+        for normalized_inbound_id in normalized_inbound_ids:
+            await self.ensure_inbound_exists(inbound_id=normalized_inbound_id)
         try:
             await self._request(
                 "POST",
                 "panel/api/clients/add",
-                json=_client_json_body(inbound_id=inbound_id, payload=payload),
+                json=_client_json_body(inbound_ids=normalized_inbound_ids, payload=payload),
             )
         except XuiRequestError as exc:
             if not _is_not_found_error(exc):
                 raise
-            body = _client_form_body(inbound_id=inbound_id, payload=payload)
-            await self._request_with_path_fallbacks(
-                "POST",
-                paths=[
-                    "panel/api/inbounds/addClient",
-                    "panel/inbound/addClient",
-                ],
-                data=body,
-            )
+            for normalized_inbound_id in normalized_inbound_ids:
+                body = _client_form_body(inbound_id=normalized_inbound_id, payload=payload)
+                await self._request_with_path_fallbacks(
+                    "POST",
+                    paths=[
+                        "panel/api/inbounds/addClient",
+                        "panel/inbound/addClient",
+                    ],
+                    data=body,
+                )
         client_uuid = str(
             payload.get("id") or payload.get("client_uuid") or payload.get("uuid") or ""
         )
         email = str(payload.get("email") or "")
-        external_id = _pack_client_id(inbound_id=inbound_id, client_uuid=client_uuid, email=email)
+        external_id = _pack_client_id(
+            inbound_id=normalized_inbound_ids[0],
+            client_uuid=client_uuid,
+            email=email,
+        )
         return PanelClientRef(
             external_id=external_id,
             subscription_url=await self.get_subscription_url(client_id=external_id),
@@ -291,15 +305,27 @@ def _client_form_body(*, inbound_id: str, payload: dict[str, object]) -> dict[st
     }
 
 
-def _client_json_body(*, inbound_id: str, payload: dict[str, object]) -> dict[str, object]:
+def _client_json_body(*, inbound_ids: list[str], payload: dict[str, object]) -> dict[str, object]:
     return {
         "client": payload,
-        "inboundIds": [int(inbound_id)],
+        "inboundIds": [int(inbound_id) for inbound_id in inbound_ids],
     }
 
 
 def _is_not_found_error(error: XuiRequestError) -> bool:
     return "HTTP 404" in str(error)
+
+
+def _normalize_inbound_ids(
+    *, inbound_id: str | None, inbound_ids: list[str] | None
+) -> list[str]:
+    values = [str(value) for value in (inbound_ids or []) if str(value)]
+    if inbound_id is not None:
+        values.insert(0, str(inbound_id))
+    unique_values = list(dict.fromkeys(values))
+    if not unique_values:
+        raise XuiRequestError("3X-UI inbound id is required.")
+    return unique_values
 
 
 def _unpack_client_id(client_id: str) -> _ClientId:

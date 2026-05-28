@@ -1,3 +1,4 @@
+from collections import defaultdict
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from secrets import token_hex, token_urlsafe
@@ -578,19 +579,21 @@ async def _provision_subscription_links(
 ) -> None:
     created_nodes = 0
     failed_nodes = 0
+    links_by_server: dict[int, list[TariffInbound]] = defaultdict(list)
     for link in links:
-        node = await _create_xui_node(
+        links_by_server[link.server_id].append(link)
+
+    for server_links in links_by_server.values():
+        nodes = await _create_xui_nodes_for_server(
             session=session,
             subscription=subscription,
             user=user,
             tariff=tariff,
-            link=link,
+            links=server_links,
             settings=settings,
         )
-        if node.status == SubscriptionNodeStatus.ACTIVE:
-            created_nodes += 1
-        else:
-            failed_nodes += 1
+        created_nodes += sum(1 for node in nodes if node.status == SubscriptionNodeStatus.ACTIVE)
+        failed_nodes += sum(1 for node in nodes if node.status != SubscriptionNodeStatus.ACTIVE)
 
     subscription.is_multi_server = created_nodes + failed_nodes > 1
     subscription.status = (
@@ -601,11 +604,15 @@ async def _provision_subscription_links(
 async def _sync_subscription_nodes(
     *, subscription: VpnSubscription, settings: Settings
 ) -> None:
+    synced_client_ids: set[str] = set()
     for node in subscription.nodes:
         if node.status not in {SubscriptionNodeStatus.ACTIVE, SubscriptionNodeStatus.DISABLED}:
             continue
         if not node.xui_client_id or not node.server:
             continue
+        if node.xui_client_id in synced_client_ids:
+            continue
+        synced_client_ids.add(node.xui_client_id)
         payload = _xui_update_payload(node=node, subscription=subscription)
         try:
             async with _provider_for(node.server, settings=settings) as provider:
@@ -622,9 +629,13 @@ async def _delete_subscription_nodes_from_xui(
     *, subscription: VpnSubscription, settings: Settings
 ) -> list[str]:
     errors: list[str] = []
+    deleted_client_ids: set[str] = set()
     for node in subscription.nodes:
         if not node.xui_client_id or not node.server:
             continue
+        if node.xui_client_id in deleted_client_ids:
+            continue
+        deleted_client_ids.add(node.xui_client_id)
         try:
             async with _provider_for(node.server, settings=settings) as provider:
                 await provider.delete_client(client_id=node.xui_client_id)
@@ -649,60 +660,82 @@ def _refresh_subscription_status(subscription: VpnSubscription) -> None:
         subscription.status = SubscriptionStatus.PROVISIONING_FAILED
 
 
-async def _create_xui_node(
+async def _create_xui_nodes_for_server(
     *,
     session: AsyncSession,
     subscription: VpnSubscription,
     user: User,
     tariff: Tariff,
-    link: TariffInbound,
+    links: list[TariffInbound],
     settings: Settings,
-) -> VpnSubscriptionNode:
-    server = link.server
-    protocol = (link.protocol or "vless").lower()
+) -> list[VpnSubscriptionNode]:
+    first_link = links[0]
+    server = first_link.server
+    primary_protocol = (first_link.protocol or "vless").lower()
     client_uuid = str(uuid4())
-    email = _xui_client_email(user=user, subscription=subscription, link=link)
+    email = _xui_client_email(user=user, subscription=subscription, server_id=first_link.server_id)
     sub_id = token_urlsafe(10)
     client_payload = _xui_client_payload(
         client_uuid=client_uuid,
         email=email,
         sub_id=sub_id,
-        protocol=protocol,
+        protocol=None,
         subscription=subscription,
     )
-    node = VpnSubscriptionNode(
-        subscription=subscription,
-        server=server,
-        inbound_id=link.inbound_id,
-        protocol=protocol,
-        client_uuid=client_uuid,
-        email=email,
-        sub_id=sub_id,
-        status=SubscriptionNodeStatus.PENDING,
-        raw_config={"request": client_payload},
-    )
-    session.add(node)
+    nodes: list[VpnSubscriptionNode] = []
+    for link in links:
+        protocol = (link.protocol or primary_protocol).lower()
+        node_payload = _xui_node_payload_for_protocol(client_payload, protocol)
+        node = VpnSubscriptionNode(
+            subscription=subscription,
+            server=server,
+            inbound_id=link.inbound_id,
+            protocol=protocol,
+            client_uuid=client_uuid,
+            email=email,
+            sub_id=sub_id,
+            status=SubscriptionNodeStatus.PENDING,
+            raw_config={
+                "request": node_payload,
+                "inbound_ids": [item.inbound_id for item in links],
+            },
+        )
+        session.add(node)
+        nodes.append(node)
 
     if not server.enabled:
-        node.status = SubscriptionNodeStatus.FAILED
-        node.raw_config = {"request": client_payload, "error": "Сервер отключён."}
-        return node
+        for node in nodes:
+            node.status = SubscriptionNodeStatus.FAILED
+            node.raw_config = {
+                "request": node.raw_config.get("request") if node.raw_config else client_payload,
+                "error": "Сервер отключён.",
+            }
+        return nodes
 
     try:
         async with _provider_for(server, settings=settings) as provider:
-            ref = await provider.create_client(inbound_id=link.inbound_id, payload=client_payload)
+            ref = await provider.create_client(
+                inbound_ids=[link.inbound_id for link in links],
+                payload=client_payload,
+            )
     except (CredentialEncryptionError, XuiError) as exc:
-        node.status = SubscriptionNodeStatus.FAILED
-        node.raw_config = {"request": client_payload, "error": str(exc)}
-        return node
+        for node in nodes:
+            node.status = SubscriptionNodeStatus.FAILED
+            node.raw_config = {
+                "request": node.raw_config.get("request") if node.raw_config else client_payload,
+                "error": str(exc),
+            }
+        return nodes
 
-    node.xui_client_id = ref.external_id
-    node.status = SubscriptionNodeStatus.ACTIVE
-    node.raw_config = {
-        "request": client_payload,
-        "subscription_url": ref.subscription_url,
-    }
-    return node
+    for node in nodes:
+        node.xui_client_id = ref.external_id
+        node.status = SubscriptionNodeStatus.ACTIVE
+        node.raw_config = {
+            "request": node.raw_config.get("request") if node.raw_config else client_payload,
+            "inbound_ids": [item.inbound_id for item in links],
+            "subscription_url": ref.subscription_url,
+        }
+    return nodes
 
 
 def _xui_client_payload(
@@ -710,7 +743,7 @@ def _xui_client_payload(
     client_uuid: str,
     email: str,
     sub_id: str,
-    protocol: str,
+    protocol: str | None,
     subscription: VpnSubscription,
 ) -> dict[str, object]:
     payload: dict[str, object] = {
@@ -726,11 +759,26 @@ def _xui_client_payload(
     }
     if protocol == "vless":
         payload["flow"] = "xtls-rprx-vision"
-    if "hysteria" in protocol:
+    if protocol and "hysteria" in protocol:
         auth = token_hex(16)
         payload["auth"] = auth
         payload["password"] = auth
     return payload
+
+
+def _xui_node_payload_for_protocol(
+    payload: dict[str, object], protocol: str
+) -> dict[str, object]:
+    node_payload = dict(payload)
+    if protocol == "vless":
+        node_payload["flow"] = "xtls-rprx-vision"
+    elif protocol != "vless":
+        node_payload.pop("flow", None)
+    if "hysteria" in protocol and not (node_payload.get("auth") or node_payload.get("password")):
+        auth = token_hex(16)
+        node_payload["auth"] = auth
+        node_payload["password"] = auth
+    return node_payload
 
 
 def _xui_update_payload(
@@ -765,11 +813,11 @@ def _xui_update_payload(
     return payload
 
 
-def _xui_client_email(*, user: User, subscription: VpnSubscription, link: TariffInbound) -> str:
+def _xui_client_email(*, user: User, subscription: VpnSubscription, server_id: int) -> str:
     prefix = user.username or user.display_name or f"user{user.id}"
     safe_prefix = "".join(char for char in prefix.lower() if char.isalnum() or char in {"-", "_"})
     safe_prefix = safe_prefix[:24] or f"user{user.id}"
-    return f"{safe_prefix}-{subscription.id}-{link.server_id}-{link.inbound_id}"
+    return f"{safe_prefix}-{subscription.id}-{server_id}"
 
 
 def _expiry_millis(value: datetime | None) -> int:

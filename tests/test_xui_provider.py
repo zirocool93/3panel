@@ -83,6 +83,8 @@ async def test_xui_provider_preserves_web_base_path() -> None:
         requests.append(f"{request.method} {request.url.path}")
         if request.url.path == "/randompath/panel/api/inbounds/get/7":
             return httpx.Response(200, json={"success": True, "obj": {"id": 7}})
+        if request.url.path == "/randompath/panel/api/inbounds/get/8":
+            return httpx.Response(200, json={"success": True, "obj": {"id": 8}})
         if request.url.path == "/randompath/panel/api/clients/add":
             return httpx.Response(200, json={"success": True})
         return httpx.Response(404)
@@ -99,12 +101,13 @@ async def test_xui_provider_preserves_web_base_path() -> None:
             client=client,
         )
         ref = await provider.create_client(
-            inbound_id="7",
+            inbound_ids=["7", "8"],
             payload={"id": "uuid-1", "email": "user-1", "enable": True},
         )
 
     assert requests == [
         "GET /randompath/panel/api/inbounds/get/7",
+        "GET /randompath/panel/api/inbounds/get/8",
         "POST /randompath/panel/api/clients/add",
     ]
     assert ref.subscription_url == "https://xui.example/randompath/sub/user-1"
@@ -121,6 +124,8 @@ async def test_xui_provider_create_client_returns_external_ref() -> None:
             return httpx.Response(200, json={"success": True})
         if request.url.path == "/panel/api/inbounds/get/7":
             return httpx.Response(200, json={"success": True, "obj": {"id": 7}})
+        if request.url.path == "/panel/api/inbounds/get/8":
+            return httpx.Response(200, json={"success": True, "obj": {"id": 8}})
         if request.url.path == "/panel/api/clients/add":
             bodies.append(json.loads(request.content.decode()))
             return httpx.Response(200, json={"success": True})
@@ -139,13 +144,13 @@ async def test_xui_provider_create_client_returns_external_ref() -> None:
             client=client,
         )
         ref = await provider.create_client(
-            inbound_id="7",
+            inbound_ids=["7", "8"],
             payload={"id": "uuid-1", "email": "user-1", "enable": True},
         )
 
     assert ref.external_id == "7:uuid-1:user-1"
     assert ref.subscription_url == "https://xui.example/sub/user-1"
-    assert bodies[0]["inboundIds"] == [7]
+    assert bodies[0]["inboundIds"] == [7, 8]
     assert isinstance(bodies[0]["client"], dict)
     assert bodies[0]["client"]["email"] == "user-1"
 
