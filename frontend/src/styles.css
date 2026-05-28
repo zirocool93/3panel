@@ -162,6 +162,30 @@ body {
   max-width: 960px;
 }
 
+.diagnostics-controls {
+  margin-bottom: 16px;
+}
+
+.diagnostics-controls .ant-select {
+  min-width: 220px;
+}
+
+.diagnostic-log {
+  width: 100%;
+}
+
+.diagnostic-log pre {
+  background: #172033;
+  border-radius: 6px;
+  color: #edf3ef;
+  margin: 0;
+  max-height: 360px;
+  overflow: auto;
+  padding: 16px;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
 .update-actions {
   margin: 18px 0;
 }

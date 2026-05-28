@@ -386,10 +386,18 @@ async def test_admin_login_and_profile(monkeypatch) -> None:
                 item for item in created_xui_payloads if item["inbound_id"] == "102"
             )
             assert vless_payload["flow"] == "xtls-rprx-vision"
-            assert vless_payload["tgId"] == ""
+            assert vless_payload["tgId"] == 0
             assert vless_payload["reset"] == 0
             assert hysteria_payload["auth"]
             assert hysteria_payload["password"] == hysteria_payload["auth"]
+
+            diagnostics_response = await client.get(
+                "/api/system/diagnostics",
+                headers={"Authorization": f"Bearer {access_token}"},
+            )
+            assert diagnostics_response.status_code == 200
+            assert "checks" in diagnostics_response.json()
+            assert "logs" in diagnostics_response.json()
 
             update_subscription_response = await client.patch(
                 f"/api/clients/{client_id}/subscriptions/{provision_subscription['id']}",

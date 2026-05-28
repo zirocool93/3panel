@@ -7,6 +7,7 @@ import { ClientsPage } from "../pages/clients/ClientsPage";
 import { LoginPage } from "../pages/login/LoginPage";
 import { PaymentsPage } from "../pages/payments/PaymentsPage";
 import { TelegramSettingsPage } from "../pages/settings/TelegramSettingsPage";
+import { DiagnosticsPage } from "../pages/system/DiagnosticsPage";
 import { XuiSettingsPage } from "../pages/settings/XuiSettingsPage";
 import { UpdatesPage } from "../pages/system/UpdatesPage";
 import { TariffsPage } from "../pages/tariffs/TariffsPage";
@@ -39,6 +40,10 @@ export const router = createBrowserRouter([
           {
             path: "/system/updates",
             element: <UpdatesPage />,
+          },
+          {
+            path: "/system/diagnostics",
+            element: <DiagnosticsPage />,
           },
           {
             path: "/tariffs",

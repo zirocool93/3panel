@@ -1,4 +1,5 @@
 import {
+  BugOutlined,
   CloudServerOutlined,
   DashboardOutlined,
   IdcardOutlined,
@@ -37,6 +38,8 @@ export function AdminLayout() {
       ? "xui-clients"
     : location.pathname.startsWith("/system/updates")
       ? "updates"
+    : location.pathname.startsWith("/system/diagnostics")
+      ? "diagnostics"
       : "dashboard";
 
   return (
@@ -103,6 +106,12 @@ export function AdminLayout() {
               icon: <SyncOutlined />,
               label: ru.navigation.updates,
               onClick: () => navigate("/system/updates"),
+            },
+            {
+              key: "diagnostics",
+              icon: <BugOutlined />,
+              label: "Диагностика",
+              onClick: () => navigate("/system/diagnostics"),
             },
           ]}
         />

@@ -1,4 +1,6 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+import asyncio
+
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -8,13 +10,23 @@ from app.core.crypto import encrypt_secret
 from app.core.enums import AdminRole
 from app.core.security import hash_password, verify_password
 from app.db.models.admin import AdminUser
+from app.db.session import async_session_factory
 from app.schemas.system import (
     AdminUpdateStatus,
+    DiagnosticCheckRead,
+    DiagnosticLogRead,
+    DiagnosticsRead,
     TelegramSettingsRead,
     TelegramSettingsUpdate,
     TelegramTestMessageResult,
 )
 from app.services.app_settings import get_or_create_app_settings, get_telegram_runtime_settings
+from app.services.diagnostics import (
+    check_backend_health,
+    check_database,
+    check_nginx_proxy,
+    check_redis,
+)
 from app.services.system.updates import (
     AdminUpdateBusy,
     AdminUpdateDisabled,
@@ -28,6 +40,16 @@ from app.services.telegram import (
 )
 
 router = APIRouter(prefix="/system", tags=["system"])
+
+LOG_SERVICES = {
+    "backend_api",
+    "telegram_bot",
+    "worker",
+    "scheduler",
+    "nginx",
+    "postgres",
+    "redis",
+}
 
 
 @router.get("/updates", response_model=AdminUpdateStatus)
@@ -61,6 +83,29 @@ async def start_update(
             detail=str(exc),
         ) from exc
     return AdminUpdateStatus.model_validate(update_state.__dict__)
+
+
+@router.get("/diagnostics", response_model=DiagnosticsRead)
+async def get_diagnostics(
+    admin: AdminUser = Depends(get_current_admin),
+    settings: Settings = Depends(settings_dep),
+    services: list[str] = Query(
+        default=["backend_api", "nginx", "telegram_bot", "worker"],
+        description="Docker Compose services to include in logs.",
+    ),
+    tail: int = Query(default=120, ge=10, le=500),
+) -> DiagnosticsRead:
+    _require_owner(admin)
+    checks = await asyncio.gather(
+        check_database(async_session_factory),
+        check_redis(settings),
+        check_backend_health(settings),
+        check_nginx_proxy(),
+    )
+    return DiagnosticsRead(
+        checks=[DiagnosticCheckRead.model_validate(check.__dict__) for check in checks],
+        logs=[await _read_service_log(service, tail=tail) for service in services],
+    )
 
 
 @router.get("/telegram-settings", response_model=TelegramSettingsRead)
@@ -199,3 +244,46 @@ def _require_owner(admin: AdminUser) -> None:
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Запуск обновления доступен только владельцу.",
         )
+
+
+async def _read_service_log(service: str, *, tail: int) -> DiagnosticLogRead:
+    if service not in LOG_SERVICES:
+        return DiagnosticLogRead(
+            service=service,
+            lines=[],
+            error="Сервис не входит в разрешённый список диагностики.",
+        )
+    try:
+        process = await asyncio.create_subprocess_exec(
+            "docker",
+            "compose",
+            "-f",
+            "docker-compose.prod.yml",
+            "logs",
+            "--tail",
+            str(tail),
+            service,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+        stdout, stderr = await asyncio.wait_for(process.communicate(), timeout=12)
+    except FileNotFoundError:
+        return DiagnosticLogRead(
+            service=service,
+            lines=[],
+            error="Docker CLI недоступен внутри backend_api.",
+        )
+    except TimeoutError:
+        return DiagnosticLogRead(
+            service=service,
+            lines=[],
+            error="Чтение логов заняло слишком много времени.",
+        )
+    except Exception as exc:
+        return DiagnosticLogRead(service=service, lines=[], error=str(exc))
+
+    output = stdout.decode(errors="replace").splitlines()
+    error = stderr.decode(errors="replace").strip() or None
+    if process.returncode != 0 and not error:
+        error = f"docker compose logs завершился с кодом {process.returncode}."
+    return DiagnosticLogRead(service=service, lines=output, error=error)

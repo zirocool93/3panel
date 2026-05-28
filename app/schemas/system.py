@@ -8,6 +8,24 @@ class AdminUpdateStatus(BaseModel):
     log_tail: list[str]
 
 
+class DiagnosticCheckRead(BaseModel):
+    name: str
+    ok: bool
+    message: str
+    fix: str | None = None
+
+
+class DiagnosticLogRead(BaseModel):
+    service: str
+    lines: list[str]
+    error: str | None = None
+
+
+class DiagnosticsRead(BaseModel):
+    checks: list[DiagnosticCheckRead]
+    logs: list[DiagnosticLogRead]
+
+
 class TelegramSettingsRead(BaseModel):
     bot_username: str | None
     bot_token_set: bool

@@ -718,7 +718,7 @@ def _xui_client_payload(
         "email": email,
         "enable": True,
         "subId": sub_id,
-        "tgId": "",
+        "tgId": 0,
         "reset": 0,
         "limitIp": subscription.device_limit or 0,
         "totalGB": subscription.traffic_limit_bytes or 0,
@@ -745,7 +745,9 @@ def _xui_update_payload(
     payload.setdefault("id", node.client_uuid or "")
     payload.setdefault("email", node.email or "")
     payload.setdefault("subId", node.sub_id or "")
-    payload.setdefault("tgId", "")
+    payload.setdefault("tgId", 0)
+    if payload.get("tgId") in {"", None}:
+        payload["tgId"] = 0
     payload.setdefault("reset", 0)
     if node.protocol == "vless":
         payload["flow"] = "xtls-rprx-vision"

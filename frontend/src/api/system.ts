@@ -7,6 +7,24 @@ export type AdminUpdateStatus = {
   log_tail: string[];
 };
 
+export type DiagnosticCheckRead = {
+  name: string;
+  ok: boolean;
+  message: string;
+  fix: string | null;
+};
+
+export type DiagnosticLogRead = {
+  service: string;
+  lines: string[];
+  error: string | null;
+};
+
+export type DiagnosticsRead = {
+  checks: DiagnosticCheckRead[];
+  logs: DiagnosticLogRead[];
+};
+
 export type TelegramSettingsRead = {
   bot_username: string | null;
   bot_token_set: boolean;
@@ -44,6 +62,20 @@ export async function getUpdateStatus(): Promise<AdminUpdateStatus> {
 
 export async function startUpdate(): Promise<AdminUpdateStatus> {
   const response = await api.post<AdminUpdateStatus>("/system/updates");
+  return response.data;
+}
+
+export async function getDiagnostics(params?: {
+  services?: string[];
+  tail?: number;
+}): Promise<DiagnosticsRead> {
+  const response = await api.get<DiagnosticsRead>("/system/diagnostics", {
+    params: {
+      services: params?.services,
+      tail: params?.tail,
+    },
+    paramsSerializer: { indexes: null },
+  });
   return response.data;
 }
 
