@@ -2,7 +2,7 @@ import json
 from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Any
-from urllib.parse import quote
+from urllib.parse import quote, urlsplit
 
 import httpx
 
@@ -245,7 +245,10 @@ class XuiProvider:
                 continue
             obj = payload.get("obj") if isinstance(payload, Mapping) else None
             if isinstance(obj, Mapping):
-                sub_uri = _string_or_none(obj.get("subURI"))
+                sub_uri = _subscription_base_from_settings(
+                    obj,
+                    panel_url=str(self._client.base_url),
+                )
                 if sub_uri:
                     return sub_uri
         return None
@@ -352,6 +355,52 @@ def _client_json_body(*, inbound_ids: list[str], payload: dict[str, object]) -> 
 def _join_subscription_url(sub_uri: str, sub_id: str) -> str:
     separator = "" if sub_uri.endswith("/") else "/"
     return f"{sub_uri}{separator}{sub_id}"
+
+
+def _subscription_base_from_settings(settings: Mapping[str, Any], *, panel_url: str) -> str | None:
+    sub_uri = _string_or_none(settings.get("subURI"))
+    if sub_uri:
+        return sub_uri
+    if _bool_or_false(settings.get("subEnable")) is False:
+        return None
+
+    host = _string_or_none(settings.get("subDomain")) or _host_from_url(panel_url)
+    if not host:
+        return None
+    port = _int_or_none(settings.get("subPort")) or 2096
+    path = _string_or_none(settings.get("subPath")) or "/sub/"
+    tls_enabled = bool(_string_or_none(settings.get("subCertFile"))) and bool(
+        _string_or_none(settings.get("subKeyFile"))
+    )
+    scheme = "https" if tls_enabled or port == 443 else "http"
+    default_port = (scheme == "https" and port == 443) or (scheme == "http" and port == 80)
+    host_port = host if default_port else f"{host}:{port}"
+    return f"{scheme}://{host_port}{_normalize_sub_path(path)}"
+
+
+def _host_from_url(value: str) -> str | None:
+    try:
+        parsed = urlsplit(value)
+    except ValueError:
+        return None
+    return parsed.hostname
+
+
+def _normalize_sub_path(value: str) -> str:
+    path = value or "/sub/"
+    if not path.startswith("/"):
+        path = f"/{path}"
+    if not path.endswith("/"):
+        path = f"{path}/"
+    return path
+
+
+def _bool_or_false(value: Any) -> bool:
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        return value.lower() in {"1", "true", "yes", "on"}
+    return bool(value)
 
 
 def _is_not_found_error(error: XuiRequestError) -> bool:
