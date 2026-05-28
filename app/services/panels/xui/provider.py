@@ -97,15 +97,24 @@ class XuiProvider:
         self, *, inbound_id: str, payload: dict[str, object]
     ) -> PanelClientRef:
         await self.ensure_inbound_exists(inbound_id=inbound_id)
-        body = _client_form_body(inbound_id=inbound_id, payload=payload)
-        await self._request_with_path_fallbacks(
-            "POST",
-            paths=[
-                "panel/api/inbounds/addClient",
-                "panel/inbound/addClient",
-            ],
-            data=body,
-        )
+        try:
+            await self._request(
+                "POST",
+                "panel/api/clients/add",
+                json=_client_json_body(inbound_id=inbound_id, payload=payload),
+            )
+        except XuiRequestError as exc:
+            if not _is_not_found_error(exc):
+                raise
+            body = _client_form_body(inbound_id=inbound_id, payload=payload)
+            await self._request_with_path_fallbacks(
+                "POST",
+                paths=[
+                    "panel/api/inbounds/addClient",
+                    "panel/inbound/addClient",
+                ],
+                data=body,
+            )
         client_uuid = str(
             payload.get("id") or payload.get("client_uuid") or payload.get("uuid") or ""
         )
@@ -127,18 +136,32 @@ class XuiProvider:
 
     async def update_client(self, *, client_id: str, payload: dict[str, object]) -> None:
         ref = _unpack_client_id(client_id)
-        await self._request(
-            "POST",
-            f"panel/api/inbounds/updateClient/{ref.client_uuid}",
-            data=_client_form_body(inbound_id=ref.inbound_id, payload=payload),
-        )
+        try:
+            await self._request(
+                "POST",
+                f"panel/api/clients/update/{ref.email}",
+                json=payload,
+            )
+        except XuiRequestError as exc:
+            if not _is_not_found_error(exc):
+                raise
+            await self._request(
+                "POST",
+                f"panel/api/inbounds/updateClient/{ref.client_uuid}",
+                data=_client_form_body(inbound_id=ref.inbound_id, payload=payload),
+            )
 
     async def delete_client(self, *, client_id: str) -> None:
         ref = _unpack_client_id(client_id)
-        await self._request(
-            "POST",
-            f"panel/api/inbounds/{int(ref.inbound_id)}/delClient/{ref.client_uuid}",
-        )
+        try:
+            await self._request("POST", f"panel/api/clients/del/{ref.email}")
+        except XuiRequestError as exc:
+            if not _is_not_found_error(exc):
+                raise
+            await self._request(
+                "POST",
+                f"panel/api/inbounds/{int(ref.inbound_id)}/delClient/{ref.client_uuid}",
+            )
 
     async def disable_client(self, *, client_id: str) -> None:
         ref = _unpack_client_id(client_id)
@@ -266,6 +289,17 @@ def _client_form_body(*, inbound_id: str, payload: dict[str, object]) -> dict[st
         "id": str(int(inbound_id)),
         "settings": json.dumps({"clients": [payload]}),
     }
+
+
+def _client_json_body(*, inbound_id: str, payload: dict[str, object]) -> dict[str, object]:
+    return {
+        "client": payload,
+        "inboundIds": [int(inbound_id)],
+    }
+
+
+def _is_not_found_error(error: XuiRequestError) -> bool:
+    return "HTTP 404" in str(error)
 
 
 def _unpack_client_id(client_id: str) -> _ClientId:

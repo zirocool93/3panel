@@ -1,5 +1,4 @@
 import json
-from urllib.parse import parse_qs
 
 import httpx
 import pytest
@@ -84,7 +83,7 @@ async def test_xui_provider_preserves_web_base_path() -> None:
         requests.append(f"{request.method} {request.url.path}")
         if request.url.path == "/randompath/panel/api/inbounds/get/7":
             return httpx.Response(200, json={"success": True, "obj": {"id": 7}})
-        if request.url.path == "/randompath/panel/api/inbounds/addClient":
+        if request.url.path == "/randompath/panel/api/clients/add":
             return httpx.Response(200, json={"success": True})
         return httpx.Response(404)
 
@@ -106,14 +105,14 @@ async def test_xui_provider_preserves_web_base_path() -> None:
 
     assert requests == [
         "GET /randompath/panel/api/inbounds/get/7",
-        "POST /randompath/panel/api/inbounds/addClient",
+        "POST /randompath/panel/api/clients/add",
     ]
     assert ref.subscription_url == "https://xui.example/randompath/sub/user-1"
 
 
 @pytest.mark.asyncio
 async def test_xui_provider_create_client_returns_external_ref() -> None:
-    bodies: list[dict[str, list[str]]] = []
+    bodies: list[dict[str, object]] = []
 
     def handler(request: httpx.Request) -> httpx.Response:
         if request.url.path == "/csrf-token":
@@ -122,8 +121,8 @@ async def test_xui_provider_create_client_returns_external_ref() -> None:
             return httpx.Response(200, json={"success": True})
         if request.url.path == "/panel/api/inbounds/get/7":
             return httpx.Response(200, json={"success": True, "obj": {"id": 7}})
-        if request.url.path == "/panel/api/inbounds/addClient":
-            bodies.append(parse_qs(request.content.decode()))
+        if request.url.path == "/panel/api/clients/add":
+            bodies.append(json.loads(request.content.decode()))
             return httpx.Response(200, json={"success": True})
         return httpx.Response(404)
 
@@ -146,8 +145,9 @@ async def test_xui_provider_create_client_returns_external_ref() -> None:
 
     assert ref.external_id == "7:uuid-1:user-1"
     assert ref.subscription_url == "https://xui.example/sub/user-1"
-    assert bodies[0]["id"] == ["7"]
-    assert json.loads(bodies[0]["settings"][0])["clients"][0]["email"] == "user-1"
+    assert bodies[0]["inboundIds"] == [7]
+    assert isinstance(bodies[0]["client"], dict)
+    assert bodies[0]["client"]["email"] == "user-1"
 
 
 @pytest.mark.asyncio
@@ -158,6 +158,8 @@ async def test_xui_provider_falls_back_to_legacy_add_client_path() -> None:
         requests.append(f"{request.method} {request.url.path}")
         if request.url.path == "/panel/api/inbounds/get/7":
             return httpx.Response(200, json={"success": True, "obj": {"id": 7}})
+        if request.url.path == "/panel/api/clients/add":
+            return httpx.Response(404)
         if request.url.path == "/panel/api/inbounds/addClient":
             return httpx.Response(404)
         if request.url.path == "/panel/inbound/addClient":
@@ -179,6 +181,7 @@ async def test_xui_provider_falls_back_to_legacy_add_client_path() -> None:
 
     assert requests == [
         "GET /panel/api/inbounds/get/7",
+        "POST /panel/api/clients/add",
         "POST /panel/api/inbounds/addClient",
         "POST /panel/inbound/addClient",
     ]
