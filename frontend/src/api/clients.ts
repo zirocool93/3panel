@@ -15,6 +15,7 @@ export type ClientSubscriptionRead = {
   expires_at: string | null;
   subscription_token: string;
   subscription_url: string | null;
+  subscription_links: string[];
   subscription_qr: string | null;
   nodes_count: number;
   nodes: ClientSubscriptionNodeRead[];
@@ -32,6 +33,7 @@ export type ClientSubscriptionNodeRead = {
   sub_id: string | null;
   status: string;
   subscription_url: string | null;
+  subscription_links: string[];
   subscription_qr: string | null;
   error: string | null;
 };

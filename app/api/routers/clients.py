@@ -1,4 +1,5 @@
 from collections import defaultdict
+from collections.abc import Iterable
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from secrets import token_hex, token_urlsafe
@@ -467,10 +468,15 @@ def _client_read(user: User) -> ClientRead:
 def _subscription_read(subscription: VpnSubscription) -> ClientSubscriptionRead:
     tariff = subscription.tariff
     nodes = [_node_read(node) for node in subscription.nodes]
-    subscription_url = next(
-        (node.subscription_url for node in nodes if node.subscription_url),
-        None,
+    subscription_links = _unique_subscription_links(
+        link
+        for node in nodes
+        for link in (
+            node.subscription_links
+            or ([node.subscription_url] if node.subscription_url else [])
+        )
     )
+    subscription_url = subscription_links[0] if subscription_links else None
     return ClientSubscriptionRead(
         id=subscription.id,
         tariff_id=subscription.tariff_id,
@@ -490,6 +496,7 @@ def _subscription_read(subscription: VpnSubscription) -> ClientSubscriptionRead:
         expires_at=subscription.expires_at,
         subscription_token=subscription.subscription_token,
         subscription_url=subscription_url,
+        subscription_links=subscription_links,
         subscription_qr=qr_png_data_url(subscription_url) if subscription_url else None,
         nodes_count=len(nodes),
         nodes=nodes,
@@ -500,10 +507,16 @@ def _subscription_read(subscription: VpnSubscription) -> ClientSubscriptionRead:
 
 def _node_read(node: VpnSubscriptionNode) -> ClientSubscriptionNodeRead:
     subscription_url = None
+    subscription_links: list[str] = []
     error = None
     if isinstance(node.raw_config, dict):
         raw_url = node.raw_config.get("subscription_url")
         subscription_url = str(raw_url) if raw_url else None
+        raw_links = node.raw_config.get("subscription_links")
+        if isinstance(raw_links, list):
+            subscription_links = [str(link) for link in raw_links if link]
+        elif subscription_url:
+            subscription_links = [subscription_url]
         raw_error = node.raw_config.get("error")
         error = str(raw_error) if raw_error else None
     return ClientSubscriptionNodeRead(
@@ -516,9 +529,21 @@ def _node_read(node: VpnSubscriptionNode) -> ClientSubscriptionNodeRead:
         sub_id=node.sub_id,
         status=_normal_node_status(node.status),
         subscription_url=subscription_url,
+        subscription_links=subscription_links,
         subscription_qr=qr_png_data_url(subscription_url) if subscription_url else None,
         error=error,
     )
+
+
+def _unique_subscription_links(links: Iterable[str | None]) -> list[str]:
+    result: list[str] = []
+    seen: set[str] = set()
+    for link in links:
+        if not link or link in seen:
+            continue
+        seen.add(link)
+        result.append(link)
+    return result
 
 
 def _subscription_price(
@@ -734,6 +759,7 @@ async def _create_xui_nodes_for_server(
             "request": node.raw_config.get("request") if node.raw_config else client_payload,
             "inbound_ids": [item.inbound_id for item in links],
             "subscription_url": ref.subscription_url,
+            "subscription_links": list(ref.subscription_links),
         }
     return nodes
 

@@ -6,6 +6,7 @@ from typing import Protocol
 class PanelClientRef:
     external_id: str
     subscription_url: str | None = None
+    subscription_links: tuple[str, ...] = ()
 
 
 class PanelProvider(Protocol):

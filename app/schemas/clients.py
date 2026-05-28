@@ -86,6 +86,7 @@ class ClientSubscriptionRead(BaseModel):
     expires_at: datetime | None
     subscription_token: str
     subscription_url: str | None = None
+    subscription_links: list[str] = Field(default_factory=list)
     subscription_qr: str | None = None
     nodes_count: int = 0
     nodes: list["ClientSubscriptionNodeRead"] = Field(default_factory=list)
@@ -103,6 +104,7 @@ class ClientSubscriptionNodeRead(BaseModel):
     sub_id: str | None
     status: str
     subscription_url: str | None = None
+    subscription_links: list[str] = Field(default_factory=list)
     subscription_qr: str | None = None
     error: str | None = None
 

@@ -92,10 +92,16 @@ async def test_xui_provider_preserves_web_base_path() -> None:
                 200,
                 json={"success": True, "obj": {"client": {"email": "user-1", "subId": "sub-1"}}},
             )
-        if request.url.path == "/randompath/panel/setting/defaultSettings":
+        if request.url.path == "/randompath/panel/api/clients/subLinks/sub-1":
             return httpx.Response(
                 200,
-                json={"success": True, "obj": {"subURI": "https://sub.example/s/"}},
+                json={
+                    "success": True,
+                    "obj": [
+                        "vless://uuid-1@vpn.example:443?security=reality#user-1",
+                        "vmess://encoded",
+                    ],
+                },
             )
         return httpx.Response(404)
 
@@ -120,9 +126,13 @@ async def test_xui_provider_preserves_web_base_path() -> None:
         "GET /randompath/panel/api/inbounds/get/8",
         "POST /randompath/panel/api/clients/add",
         "GET /randompath/panel/api/clients/get/user-1",
-        "POST /randompath/panel/setting/defaultSettings",
+        "GET /randompath/panel/api/clients/subLinks/sub-1",
     ]
-    assert ref.subscription_url == "https://sub.example/s/sub-1"
+    assert ref.subscription_url == "vless://uuid-1@vpn.example:443?security=reality#user-1"
+    assert ref.subscription_links == (
+        "vless://uuid-1@vpn.example:443?security=reality#user-1",
+        "vmess://encoded",
+    )
 
 
 @pytest.mark.asyncio
@@ -146,20 +156,12 @@ async def test_xui_provider_create_client_returns_external_ref() -> None:
                 200,
                 json={"success": True, "obj": {"client": {"email": "user-1", "subId": "sub-1"}}},
             )
-        if request.url.path == "/panel/setting/defaultSettings":
+        if request.url.path == "/panel/api/clients/subLinks/sub-1":
             return httpx.Response(
                 200,
                 json={
                     "success": True,
-                    "obj": {
-                        "subEnable": True,
-                        "subURI": "",
-                        "subDomain": "vpn.example.com",
-                        "subPort": 2096,
-                        "subPath": "/sub/",
-                        "subCertFile": "",
-                        "subKeyFile": "",
-                    },
+                    "obj": ["vless://uuid-1@vpn.example:443?security=reality#user-1"],
                 },
             )
         return httpx.Response(404)
@@ -182,7 +184,7 @@ async def test_xui_provider_create_client_returns_external_ref() -> None:
         )
 
     assert ref.external_id == "7:uuid-1:user-1"
-    assert ref.subscription_url == "http://vpn.example.com:2096/sub/sub-1"
+    assert ref.subscription_url == "vless://uuid-1@vpn.example:443?security=reality#user-1"
     assert bodies[0]["inboundIds"] == [7, 8]
     assert isinstance(bodies[0]["client"], dict)
     assert bodies[0]["client"]["email"] == "user-1"

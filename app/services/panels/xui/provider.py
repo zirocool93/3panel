@@ -2,7 +2,7 @@ import json
 from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Any
-from urllib.parse import quote, urlsplit
+from urllib.parse import quote
 
 import httpx
 
@@ -135,12 +135,14 @@ class XuiProvider:
             client_uuid=client_uuid,
             email=email,
         )
+        subscription_links = await self.get_subscription_links_for_client(
+            client_id=external_id,
+            fallback_sub_id=_string_or_none(payload.get("subId")),
+        )
         return PanelClientRef(
             external_id=external_id,
-            subscription_url=await self.get_subscription_url(
-                client_id=external_id,
-                fallback_sub_id=_string_or_none(payload.get("subId")),
-            ),
+            subscription_url=subscription_links[0] if subscription_links else None,
+            subscription_links=tuple(subscription_links),
         )
 
     async def ensure_inbound_exists(self, *, inbound_id: str) -> None:
@@ -213,16 +215,37 @@ class XuiProvider:
     async def get_subscription_url(
         self, *, client_id: str, fallback_sub_id: str | None = None
     ) -> str | None:
+        links = await self.get_subscription_links_for_client(
+            client_id=client_id,
+            fallback_sub_id=fallback_sub_id,
+        )
+        return links[0] if links else None
+
+    async def get_subscription_links_for_client(
+        self, *, client_id: str, fallback_sub_id: str | None = None
+    ) -> list[str]:
         ref = _unpack_client_id(client_id)
         if not ref.email:
-            return None
+            return []
         sub_id = await self._get_client_sub_id(email=ref.email) or fallback_sub_id
         if not sub_id:
-            return None
-        sub_uri = await self._get_subscription_base_uri()
-        if not sub_uri:
-            return None
-        return _join_subscription_url(sub_uri, sub_id)
+            return []
+        return await self.get_subscription_links(sub_id=sub_id)
+
+    async def get_subscription_links(self, *, sub_id: str) -> list[str]:
+        try:
+            payload = await self._request(
+                "GET",
+                f"panel/api/clients/subLinks/{quote(sub_id, safe='')}",
+            )
+        except XuiRequestError:
+            return []
+        obj = payload.get("obj") if isinstance(payload, Mapping) else None
+        if isinstance(obj, str):
+            return [obj] if obj else []
+        if not isinstance(obj, list):
+            return []
+        return [str(item) for item in obj if item]
 
     async def _get_client_sub_id(self, *, email: str) -> str | None:
         try:
@@ -236,22 +259,6 @@ class XuiProvider:
         if not isinstance(client, Mapping):
             return None
         return _string_or_none(client.get("subId") or client.get("sub_id"))
-
-    async def _get_subscription_base_uri(self) -> str | None:
-        for path in ("panel/setting/defaultSettings", "panel/setting/all"):
-            try:
-                payload = await self._request("POST", path)
-            except XuiRequestError:
-                continue
-            obj = payload.get("obj") if isinstance(payload, Mapping) else None
-            if isinstance(obj, Mapping):
-                sub_uri = _subscription_base_from_settings(
-                    obj,
-                    panel_url=str(self._client.base_url),
-                )
-                if sub_uri:
-                    return sub_uri
-        return None
 
     async def _request(self, method: str, path: str, **kwargs: Any) -> dict[str, Any]:
         if not self._authenticated:
@@ -350,57 +357,6 @@ def _client_json_body(*, inbound_ids: list[str], payload: dict[str, object]) -> 
         "client": payload,
         "inboundIds": [int(inbound_id) for inbound_id in inbound_ids],
     }
-
-
-def _join_subscription_url(sub_uri: str, sub_id: str) -> str:
-    separator = "" if sub_uri.endswith("/") else "/"
-    return f"{sub_uri}{separator}{sub_id}"
-
-
-def _subscription_base_from_settings(settings: Mapping[str, Any], *, panel_url: str) -> str | None:
-    sub_uri = _string_or_none(settings.get("subURI"))
-    if sub_uri:
-        return sub_uri
-    if _bool_or_false(settings.get("subEnable")) is False:
-        return None
-
-    host = _string_or_none(settings.get("subDomain")) or _host_from_url(panel_url)
-    if not host:
-        return None
-    port = _int_or_none(settings.get("subPort")) or 2096
-    path = _string_or_none(settings.get("subPath")) or "/sub/"
-    tls_enabled = bool(_string_or_none(settings.get("subCertFile"))) and bool(
-        _string_or_none(settings.get("subKeyFile"))
-    )
-    scheme = "https" if tls_enabled or port == 443 else "http"
-    default_port = (scheme == "https" and port == 443) or (scheme == "http" and port == 80)
-    host_port = host if default_port else f"{host}:{port}"
-    return f"{scheme}://{host_port}{_normalize_sub_path(path)}"
-
-
-def _host_from_url(value: str) -> str | None:
-    try:
-        parsed = urlsplit(value)
-    except ValueError:
-        return None
-    return parsed.hostname
-
-
-def _normalize_sub_path(value: str) -> str:
-    path = value or "/sub/"
-    if not path.startswith("/"):
-        path = f"/{path}"
-    if not path.endswith("/"):
-        path = f"{path}/"
-    return path
-
-
-def _bool_or_false(value: Any) -> bool:
-    if isinstance(value, bool):
-        return value
-    if isinstance(value, str):
-        return value.lower() in {"1", "true", "yes", "on"}
-    return bool(value)
 
 
 def _is_not_found_error(error: XuiRequestError) -> bool:

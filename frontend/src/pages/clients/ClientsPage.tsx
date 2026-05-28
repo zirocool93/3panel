@@ -652,6 +652,35 @@ function renderSubscriptions(
   );
 }
 
+function linksForSubscription(item: {
+  subscription_links?: string[];
+  subscription_url: string | null;
+}) {
+  if (item.subscription_links?.length) {
+    return item.subscription_links;
+  }
+  return item.subscription_url ? [item.subscription_url] : [];
+}
+
+function renderSubscriptionLinks(item: {
+  subscription_links?: string[];
+  subscription_url: string | null;
+}) {
+  const links = linksForSubscription(item);
+  if (!links.length) {
+    return "-";
+  }
+  return (
+    <Space direction="vertical" size={2}>
+      {links.map((link) => (
+        <Typography.Link copyable href={link} key={link} target="_blank">
+          {link}
+        </Typography.Link>
+      ))}
+    </Space>
+  );
+}
+
 function renderSubscriptionNodes(subscription: ClientSubscriptionRead) {
   const columns: TableColumnsType<ClientSubscriptionNodeRead> = [
     { title: "Сервер", dataIndex: "server_id" },
@@ -673,14 +702,7 @@ function renderSubscriptionNodes(subscription: ClientSubscriptionRead) {
     },
     {
       title: "Ссылка",
-      render: (_, node) =>
-        node.subscription_url ? (
-          <Typography.Link copyable href={node.subscription_url} target="_blank">
-            {node.subscription_url}
-          </Typography.Link>
-        ) : (
-          "—"
-        ),
+      render: (_, node) => renderSubscriptionLinks(node),
     },
     {
       title: "QR",
@@ -695,11 +717,9 @@ function renderSubscriptionNodes(subscription: ClientSubscriptionRead) {
   ];
   return (
     <Space direction="vertical" size="middle">
-      {subscription.subscription_url ? (
+      {linksForSubscription(subscription).length ? (
         <Space align="start" wrap>
-          <Typography.Link copyable href={subscription.subscription_url} target="_blank">
-            {subscription.subscription_url}
-          </Typography.Link>
+          {renderSubscriptionLinks(subscription)}
           {subscription.subscription_qr ? (
             <img alt="QR подписки" className="subscription-qr" src={subscription.subscription_qr} />
           ) : null}
