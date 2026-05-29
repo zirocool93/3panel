@@ -15,6 +15,7 @@ class VpnSubscription(Base, TimestampMixin):
     id: Mapped[int] = mapped_column(primary_key=True)
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id"))
     tariff_id: Mapped[int | None] = mapped_column(ForeignKey("tariffs.id"))
+    order_id: Mapped[int | None] = mapped_column(ForeignKey("orders.id"), index=True)
     status: Mapped[SubscriptionStatus] = mapped_column(
         Enum(SubscriptionStatus, name="subscription_status", native_enum=False),
         default=SubscriptionStatus.PENDING,

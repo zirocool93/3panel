@@ -1,7 +1,8 @@
+from datetime import datetime
 from decimal import Decimal
 from typing import TYPE_CHECKING
 
-from sqlalchemy import BigInteger, Boolean, ForeignKey, Numeric, String, Text
+from sqlalchemy import BigInteger, Boolean, DateTime, ForeignKey, Numeric, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base, TimestampMixin
@@ -26,6 +27,9 @@ class User(Base, TimestampMixin):
     is_blocked: Mapped[bool] = mapped_column(Boolean, default=False)
     is_trial_used: Mapped[bool] = mapped_column(Boolean, default=False)
     referrer_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
+    start_payload: Mapped[str | None] = mapped_column(String(255))
+    source: Mapped[str | None] = mapped_column(String(255), index=True)
+    last_seen_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
     referrer: Mapped["User | None"] = relationship(remote_side="User.id")
     subscriptions: Mapped[list["VpnSubscription"]] = relationship(back_populates="user")

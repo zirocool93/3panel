@@ -7,7 +7,7 @@ celery_app = Celery(
     "vpnbotx",
     broker=str(settings.redis_url),
     backend=str(settings.redis_url),
-    include=["app.workers.tasks.system"],
+    include=["app.workers.tasks.system", "app.workers.tasks.commerce"],
 )
 celery_app.conf.timezone = "UTC"
 celery_app.conf.beat_schedule = {

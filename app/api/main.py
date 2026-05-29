@@ -2,9 +2,12 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.routers.auth import router as auth_router
+from app.api.routers.catalog import router as catalog_router
 from app.api.routers.clients import router as clients_router
+from app.api.routers.commerce import router as commerce_router
 from app.api.routers.payments import router as payments_router
 from app.api.routers.servers import router as servers_router
+from app.api.routers.subscriptions import router as subscriptions_router
 from app.api.routers.system import router as system_router
 from app.api.routers.tariffs import router as tariffs_router
 from app.api.routers.transactions import router as transactions_router
@@ -24,12 +27,15 @@ def create_app() -> FastAPI:
         allow_headers=["*"],
     )
     app.include_router(auth_router, prefix=settings.api_v1_prefix)
+    app.include_router(catalog_router, prefix=settings.api_v1_prefix)
     app.include_router(clients_router, prefix=settings.api_v1_prefix)
     app.include_router(payments_router, prefix=settings.api_v1_prefix)
+    app.include_router(commerce_router, prefix=settings.api_v1_prefix)
     app.include_router(servers_router, prefix=settings.api_v1_prefix)
     app.include_router(system_router, prefix=settings.api_v1_prefix)
     app.include_router(tariffs_router, prefix=settings.api_v1_prefix)
     app.include_router(transactions_router, prefix=settings.api_v1_prefix)
+    app.include_router(subscriptions_router)
 
     @app.get("/health", tags=["system"])
     async def health() -> dict[str, str]:
