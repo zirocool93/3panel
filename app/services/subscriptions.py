@@ -18,7 +18,10 @@ class SubscriptionService:
     async def get_user_active_subscriptions(self, user_id: int) -> list[VpnSubscription]:
         result = await self.session.execute(
             select(VpnSubscription)
-            .options(selectinload(VpnSubscription.tariff), selectinload(VpnSubscription.nodes))
+            .options(
+                selectinload(VpnSubscription.tariff),
+                selectinload(VpnSubscription.nodes).selectinload(VpnSubscriptionNode.server),
+            )
             .where(
                 VpnSubscription.user_id == user_id,
                 VpnSubscription.status == SubscriptionStatus.ACTIVE,
