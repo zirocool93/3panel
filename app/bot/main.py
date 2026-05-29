@@ -2,50 +2,24 @@ import asyncio
 
 import structlog
 from aiogram import Bot, Dispatcher
+from aiogram.client.default import DefaultBotProperties
 from aiogram.client.session.aiohttp import AiohttpSession
-from aiogram.filters import Command, CommandObject, CommandStart
-from aiogram.types import Message
+from aiogram.enums import ParseMode
+from aiogram.fsm.storage.memory import MemoryStorage
 
+from app.bot.router import build_router
 from app.bot.texts import ru
 from app.core.config import get_settings
 from app.core.logging import configure_logging
 from app.db.session import async_session_factory
 from app.services.app_settings import get_telegram_runtime_settings
-from app.services.bot_facades import BotUserFacade
 
 logger = structlog.get_logger(__name__)
 
 
 def create_dispatcher() -> Dispatcher:
-    dispatcher = Dispatcher()
-
-    @dispatcher.message(CommandStart())
-    async def start(message: Message, command: CommandObject) -> None:
-        if not message.from_user:
-            return
-        async with async_session_factory() as session:
-            user = await BotUserFacade(session).start_user(
-                {
-                    "telegram_id": message.from_user.id,
-                    "username": message.from_user.username,
-                    "first_name": message.from_user.first_name,
-                    "last_name": message.from_user.last_name,
-                    "language_code": message.from_user.language_code,
-                    "display_name": message.from_user.full_name,
-                },
-                command.args,
-            )
-            await session.commit()
-        await message.answer(f"{ru.START}\n\nID: {user.id}")
-
-    @dispatcher.message(Command("menu"))
-    async def menu(message: Message) -> None:
-        await message.answer("Главное меню: Мой VPN / Купить / Пробный период / Поддержка")
-
-    @dispatcher.message(Command("vpn", "buy", "trial", "support", "paysupport", "terms", "privacy"))
-    async def placeholder(message: Message) -> None:
-        await message.answer("Раздел подготовлен на уровне backend и будет расширен в UI бота.")
-
+    dispatcher = Dispatcher(storage=MemoryStorage())
+    dispatcher.include_router(build_router())
     return dispatcher
 
 
@@ -64,7 +38,11 @@ async def run_polling() -> None:
         if telegram_settings.socks5_proxy_url
         else None
     )
-    bot = Bot(token=telegram_settings.bot_token, session=aiohttp_session)
+    bot = Bot(
+        token=telegram_settings.bot_token,
+        session=aiohttp_session,
+        default=DefaultBotProperties(parse_mode=ParseMode.HTML),
+    )
     await create_dispatcher().start_polling(bot)
 
 

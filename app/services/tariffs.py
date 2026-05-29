@@ -27,6 +27,19 @@ class TariffCatalogService:
             for tariff in result.scalars().unique()
         ]
 
+    async def get_visible_tariff(
+        self, tariff_id: int, payment_method: PaymentProviderType | str | None = None
+    ) -> TariffCatalogItem | None:
+        result = await self.session.execute(
+            select(Tariff)
+            .options(selectinload(Tariff.prices))
+            .where(Tariff.id == tariff_id, Tariff.enabled.is_(True), Tariff.is_visible.is_(True))
+        )
+        tariff = result.scalar_one_or_none()
+        if not tariff:
+            return None
+        return self._item(tariff, _method_value(payment_method))
+
     def _item(self, tariff: Tariff, payment_method: str | None) -> TariffCatalogItem:
         method_prices = {
             _method_value(price.payment_method) or "": {

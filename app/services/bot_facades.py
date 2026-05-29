@@ -1,8 +1,10 @@
 from typing import Any
 
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.enums import PaymentProviderType
+from app.db.models.user import User
 from app.services.orders import OrderService
 from app.services.payments import PaymentService
 from app.services.subscriptions import SubscriptionService, subscription_links
@@ -27,6 +29,10 @@ class BotUserFacade:
             start_payload=payload,
         )
 
+    async def get_user_by_telegram_id(self, telegram_id: int) -> User | None:
+        result = await self.session.execute(select(User).where(User.telegram_id == telegram_id))
+        return result.scalar_one_or_none()
+
     async def get_main_menu_state(self, user_id: int) -> dict[str, Any]:
         subscriptions = await SubscriptionService(self.session).get_user_active_subscriptions(
             user_id
@@ -40,6 +46,13 @@ class BotUserFacade:
         self, user_id: int, payment_method: PaymentProviderType | str | None
     ) -> Any:
         return await TariffCatalogService(self.session).get_visible_tariffs(payment_method)
+
+    async def get_tariff(
+        self, tariff_id: int, payment_method: PaymentProviderType | str | None
+    ) -> Any:
+        return await TariffCatalogService(self.session).get_visible_tariff(
+            tariff_id, payment_method
+        )
 
     async def create_order_for_tariff(
         self, user_id: int, tariff_id: int, payment_method: PaymentProviderType

@@ -164,6 +164,26 @@ Local flow check:
 
 Frontend pages for orders/payments/subscriptions are intentionally minimal/TODO in this stage; the backend API is the stable contract for the next bot UI pass.
 
+## Telegram Bot MVP
+
+The aiogram 3 bot now uses modular routers and handlers over the backend services/facades. Handlers are intentionally thin: they receive Telegram events, call services, render messages and report errors.
+
+Commands:
+
+- `/start` - create/update Telegram user, process deep links and open the main menu.
+- `/menu` - open the main menu.
+- `/buy` - show visible tariffs and payment actions.
+- `/vpn` - show active VPN subscriptions and subscription links.
+- `/trial` - activate one-time trial access.
+- `/support` - create a Telegram support request.
+- `/paysupport` - start a payment support request.
+- `/terms` - show usage terms placeholder.
+- `/privacy` - show privacy policy placeholder.
+- `/ref` - show referral link.
+- `/promo` - promo-code placeholder.
+
+The current production payment flow is implemented for Telegram Stars: the bot creates an order/payment, sends a Stars invoice, handles `pre_checkout_query` and delegates `successful_payment` to `TelegramStarsService`/`PaymentService`. Provisioning still runs through Celery and the common `SubscriptionProvisioningService`. Cardlink and YooKassa settings remain available in the backend/admin panel, but their bot checkout/webhook flows are planned for later stages.
+
 Диагностика развёрнутого backend-контейнера:
 
 ```bash
