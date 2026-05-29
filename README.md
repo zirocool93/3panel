@@ -139,6 +139,31 @@ pytest
 cd frontend && npm install && npm run build
 ```
 
+## Stage 2: commerce backend flow
+
+Stage 2 adds the backend foundation for selling VPN from Telegram without putting business logic into bot handlers:
+
+- Telegram users are created/updated on `/start`, including `ref_`, `promo_`, `plan_` and `source_` payload storage.
+- Visible tariffs are exposed through `TariffCatalogService` and `GET /api/catalog/tariffs`.
+- Orders snapshot tariff price, currency, duration and limits at creation time.
+- Payments are idempotent by `idempotency_key` and by non-empty `provider + external_payment_id`.
+- Telegram Stars payloads use `order:{order_id}:payment:{payment_id}:user:{user_id}`.
+- Manual payments can be confirmed or rejected from admin API.
+- Successful payment marks the order paid and queues Celery provisioning.
+- Provisioning creates or extends `VpnSubscription`, creates `VpnSubscriptionNode` rows and calls `XuiProvider`.
+- Public `GET /sub/{token}` returns active subscription links as `text/plain`.
+- Trial activation is limited to one successful trial per user.
+
+Local flow check:
+
+1. Run `alembic upgrade head` or start the backend container, which runs migrations.
+2. Create a user, tariff and enabled 3X-UI server/inbound in the admin API.
+3. Create `POST /api/orders`, then `POST /api/payments`.
+4. Confirm manual payment with `POST /api/payments/{payment_id}/manual-confirm`.
+5. Ensure the worker is running; provisioning will fill `vpn_subscriptions` and `/sub/{token}`.
+
+Frontend pages for orders/payments/subscriptions are intentionally minimal/TODO in this stage; the backend API is the stable contract for the next bot UI pass.
+
 Диагностика развёрнутого backend-контейнера:
 
 ```bash

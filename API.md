@@ -65,3 +65,29 @@ Endpoint возвращает `202 Accepted`, когда background update proce
 
 Для старых панелей остаётся fallback через логин и пароль. Для новых панелей без API token
 поддержан CSRF-aware login через `/csrf-token`, но для production лучше использовать token.
+
+## Stage 2 commerce endpoints
+
+| Method | Path | Purpose |
+| --- | --- | --- |
+| `GET` | `/api/catalog/tariffs?payment_method=manual` | Public visible tariff catalog for bot/API clients |
+| `GET` | `/api/orders` | Admin order list |
+| `POST` | `/api/orders` | Create order for `user_id`, `tariff_id`, `payment_method` |
+| `GET` | `/api/orders/{order_id}` | Admin order details |
+| `POST` | `/api/orders/{order_id}/cancel` | Cancel order |
+| `POST` | `/api/orders/{order_id}/retry-provisioning` | Retry provisioning for a paid/failed order |
+| `GET` | `/api/payments?status=pending&provider=manual` | Admin payment list with filters |
+| `POST` | `/api/payments` | Create payment for an order/provider |
+| `GET` | `/api/payments/{payment_id}` | Admin payment details |
+| `POST` | `/api/payments/{payment_id}/manual-confirm` | Confirm manual payment and queue provisioning |
+| `POST` | `/api/payments/{payment_id}/manual-reject` | Mark manual payment failed; order remains pending for another attempt |
+| `GET` | `/api/subscriptions` | Admin subscription list |
+| `GET` | `/api/subscriptions/{subscription_id}` | Admin subscription details |
+| `POST` | `/api/subscriptions/{subscription_id}/disable` | Disable subscription |
+| `POST` | `/api/subscriptions/{subscription_id}/resync` | Reserved endpoint for stats/client sync |
+| `POST` | `/api/subscriptions/{subscription_id}/resend` | Reserved endpoint for resend flow |
+| `GET` | `/api/dashboard/summary` | Admin dashboard counters |
+| `GET` | `/sub/{token}` | Public subscription config, `text/plain` links |
+| `GET` | `/sub/{token}/info` | Public subscription metadata JSON |
+
+Order creation snapshots tariff price, duration, traffic limit and device limit. Payment success is idempotent: repeated successful provider events return the already-succeeded payment and do not create duplicate subscriptions. Telegram Stars invoice payload format is `order:{order_id}:payment:{payment_id}:user:{user_id}`.
